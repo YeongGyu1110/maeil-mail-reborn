@@ -1,0 +1,37 @@
+name: Daily Interview Mail
+
+on:
+  schedule:
+    # 매일 UTC 22:00 (한국 시간 다음 날 오전 07:00)
+    - cron: '0 22 * * *'
+  workflow_dispatch: # Actions 탭에서 수동 실행 버튼 활성화
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # progress.txt 커밋&푸시 권한
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Send Mail
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          PAGES_URL: ${{ vars.PAGES_URL }} # Variables에서 등록
+        run: python send_mail.py
+
+      - name: Update progress.txt
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add progress.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: advance question index" && git push)
