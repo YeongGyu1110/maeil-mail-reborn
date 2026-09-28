@@ -1,9 +1,4 @@
-# maeil-mail-contents
+# maeil-mail-reborn
 
 매일메일(`maeil-mail.kr`) 서비스 종료 이후,
-기존 콘텐츠를 모아두기 위한 저장소입니다.
-
-### 콘텐츠 목차
-
-- [Frontend - 질문 ID 기준 목차](./frontend/toc.md)
-- [Frontend - 질문 세부 카테고리 기준 목차](./frontend/toc-category.md)
+매일 아침 7시에 다시 면접 질문을 받기 위해 만든 개인용 매일메일 서비스
