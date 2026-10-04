@@ -2,8 +2,8 @@ name: Daily Interview Mail
 
 on:
   schedule:
-    # 매일 UTC 22:07 (한국 시간 다음 날 오전 07:07)
-    - cron: '7 22 * * *'
+    # 매일 UTC 21:07 (한국 시간 다음 날 오전 06:07)
+    - cron: '7 21 * * *'
   workflow_dispatch: # Actions 탭에서 수동 실행 버튼 활성화
 
 jobs:
