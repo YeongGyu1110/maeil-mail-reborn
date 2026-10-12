@@ -30,6 +30,39 @@
       --code-inline-bg: #eaf5ee;
       --code-inline-color: #0b7a48;
       --table-header-bg: #f9fafb;
+      --skeleton-base: #f0f2f5;
+      --skeleton-highlight: #e4e7eb;
+    }
+
+    /* 스켈레톤 UI 애니메이션 */
+    .skeleton {
+      background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.5s ease-in-out infinite;
+      border-radius: 6px;
+    }
+
+    @keyframes skeleton-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .skeleton-badge {
+      width: 96px;
+      height: 25px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+
+    .skeleton-title {
+      width: 75%;
+      height: 32px;
+      border-radius: 8px;
+    }
+
+    .skeleton-line {
+      height: 16px;
+      margin-bottom: 12px;
     }
 
     * { box-sizing: border-box; }
@@ -228,10 +261,19 @@
 </head>
 <body>
   <div class="container">
-    <div class="badge" id="question-badge">FE INTERVIEW</div>
-    <h1 id="question-title">질문을 불러오는 중...</h1>
+    <div class="badge" id="question-badge" style="display: none;"></div>
+    <div class="skeleton skeleton-badge" id="badge-skeleton"></div>
+
+    <h1 id="question-title"><div class="skeleton skeleton-title"></div></h1>
     <hr />
-    <div id="content">답변 내용을 불러오는 중입니다...</div>
+    <div id="content">
+      <div class="skeleton skeleton-line" style="width: 90%;"></div>
+      <div class="skeleton skeleton-line" style="width: 100%;"></div>
+      <div class="skeleton skeleton-line" style="width: 78%;"></div>
+      <div class="skeleton skeleton-line" style="width: 45%; margin-top: 24px;"></div>
+      <div class="skeleton skeleton-line" style="width: 95%;"></div>
+      <div class="skeleton skeleton-line" style="width: 82%;"></div>
+    </div>
   </div>
 
   <script>
@@ -257,13 +299,19 @@
         const match = tocText.match(regex);
         const questionTitle = match ? match[1] : q;
 
-        document.getElementById('question-badge').innerText = q.toUpperCase();
+        // 뱃지 스켈레톤 숨기고 실제 뱃지 활성화
+        document.getElementById('badge-skeleton').style.display = 'none';
+        const badgeEl = document.getElementById('question-badge');
+        badgeEl.style.display = 'inline-block';
+        badgeEl.innerText = q.toUpperCase();
+
         document.getElementById('question-title').innerText = questionTitle;
         document.title = `${questionTitle} - 매일메일`;
 
         document.getElementById('content').innerHTML = marked.parse(contentMd);
         Prism.highlightAll();
       } catch (err) {
+        document.getElementById('badge-skeleton').style.display = 'none';
         document.getElementById('question-title').innerText = "오류가 발생했습니다";
         document.getElementById('content').innerHTML = `<p style="color: red;">${err.message}</p>`;
       }
