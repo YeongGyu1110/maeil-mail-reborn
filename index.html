@@ -208,12 +208,45 @@
       font-weight: 600;
     }
 
+    .code-wrapper {
+      position: relative;
+      margin: 20px 0;
+    }
+
     #content pre {
       border-radius: 10px;
       padding: 18px;
       overflow-x: auto;
-      margin: 20px 0;
+      margin: 0;
       background: #2d2d2d;
+    }
+
+    .code-copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #e5e8eb;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .code-copy-btn:hover {
+      background: rgba(255, 255, 255, 0.28);
+      color: #ffffff;
+    }
+
+    .code-copy-btn.copied {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
     }
 
     #content a {
@@ -310,12 +343,47 @@
 
         document.getElementById('content').innerHTML = marked.parse(contentMd);
         Prism.highlightAll();
+        addCopyButtons();
       } catch (err) {
         document.getElementById('badge-skeleton').style.display = 'none';
         document.getElementById('question-title').innerText = "오류가 발생했습니다";
         document.getElementById('content').innerHTML = `<p style="color: red;">${err.message}</p>`;
       }
     }
+
+    function addCopyButtons() {
+      document.querySelectorAll('#content pre').forEach((pre) => {
+        // 코드 블록을 relative 래퍼로 감싸 가로 스크롤 시에도 버튼 위치 고정
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-wrapper';
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'code-copy-btn';
+        copyBtn.type = 'button';
+        copyBtn.innerText = '복사';
+
+        copyBtn.addEventListener('click', async () => {
+          try {
+            const code = pre.querySelector('code')?.innerText || pre.innerText;
+            await navigator.clipboard.writeText(code);
+            copyBtn.innerText = '복사됨!';
+            copyBtn.classList.add('copied');
+
+            setTimeout(() => {
+              copyBtn.innerText = '복사';
+              copyBtn.classList.remove('copied');
+            }, 2000);
+          } catch (err) {
+            copyBtn.innerText = '실패';
+          }
+        });
+
+        wrapper.appendChild(copyBtn);
+      });
+    }
+
     loadContent();
   </script>
 </body>
