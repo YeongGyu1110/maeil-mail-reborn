@@ -2,7 +2,7 @@ rules_version = '2';
 
 // 사용자당 문서 1개: users/{uid} = {
 //   items: { "fe-1": { level, memo, memoAt } },
-//   memoRepo: { id, fullName, defaultBranch }
+//   memoRepo: { id, fullName }
 // }
 // 본인 문서만 읽고 쓸 수 있고, 목록 조회(list)와 삭제는 막는다.
 service cloud.firestore {
