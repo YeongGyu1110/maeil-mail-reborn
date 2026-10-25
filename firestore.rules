@@ -1,6 +1,9 @@
 rules_version = '2';
 
-// 사용자당 문서 1개: users/{uid} = { items: { "fe-1": { level, memo, memoAt } } }
+// 사용자당 문서 1개: users/{uid} = {
+//   items: { "fe-1": { level, memo, memoAt } },
+//   memoRepo: { id, fullName, defaultBranch }
+// }
 // 본인 문서만 읽고 쓸 수 있고, 목록 조회(list)와 삭제는 막는다.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -8,8 +11,9 @@ service cloud.firestore {
       allow get: if request.auth != null && request.auth.uid == uid;
       allow create, update: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['items'])
-        && request.resource.data.items is map;
+        && request.resource.data.keys().hasOnly(['items', 'memoRepo'])
+        && (!('items' in request.resource.data) || request.resource.data.items is map)
+        && (!('memoRepo' in request.resource.data) || request.resource.data.memoRepo is map);
     }
   }
 }

@@ -158,6 +158,7 @@
       font: inherit;
       font-size: 14px;
       font-weight: 600;
+      text-decoration: none;
       cursor: pointer;
       white-space: nowrap;
       transition: background-color 0.2s, color 0.2s, border-color 0.2s;
@@ -220,6 +221,197 @@
 
     .sync-status[data-state="synced"] .sync-dot { background: var(--primary); }
     .sync-status[data-state="error"] .sync-dot { background: var(--danger); }
+
+    /* 메모 저장소 */
+    .repo-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+
+    .repo-card-icon {
+      display: flex;
+      flex-shrink: 0;
+      color: var(--text-main);
+    }
+
+    .repo-card-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .repo-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .repo-card-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .repo-card-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .repo-card-value.is-empty {
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .repo-card-value a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .repo-card-value a:hover { color: var(--primary); }
+
+    .repo-dialog {
+      width: min(520px, calc(100% - 32px));
+      max-height: min(640px, calc(100% - 64px));
+      padding: 0;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      background: var(--bg-card);
+      color: var(--text-sub);
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+    }
+
+    .repo-dialog[open] {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .repo-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+    .dialog-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 20px 20px 12px;
+    }
+
+    .dialog-head h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .dialog-head p {
+      margin: 4px 0 0;
+      font-size: 13.5px;
+      color: var(--text-muted);
+    }
+
+    .dialog-search {
+      flex: none;
+      margin: 0 20px 8px;
+    }
+
+    .repo-body {
+      flex: 1;
+      min-height: 180px;
+      overflow-y: auto;
+      padding: 4px 12px 8px;
+    }
+
+    .repo-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .repo-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2px 12px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .repo-item:hover { background: var(--bg-subtle); }
+    .repo-item[aria-pressed="true"] { background: var(--primary-light); }
+
+    .repo-name,
+    .repo-desc {
+      grid-column: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .repo-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .repo-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .repo-check {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      align-self: center;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .repo-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin: 0;
+      padding: 40px 12px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .dialog-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px 16px;
+      border-top: 1px solid var(--border-color);
+      font-size: 13.5px;
+    }
+
+    .dialog-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 16px;
+    }
+
+    .dialog-foot a {
+      color: var(--primary);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .dialog-foot a:hover { text-decoration: underline; }
 
     /* 오늘 받은 질문 */
     .today {
@@ -708,6 +900,15 @@
       <span id="sync-text">불러오는 중…</span>
     </p>
 
+    <section id="repo-card" class="card repo-card" aria-label="메모 저장소" hidden>
+      <span class="repo-card-icon" aria-hidden="true"></span>
+      <div class="repo-card-body">
+        <div class="repo-card-label">메모 저장소</div>
+        <div id="repo-card-value" class="repo-card-value"></div>
+      </div>
+      <button type="button" id="repo-open" class="btn btn-sm">저장소 선택</button>
+    </section>
+
     <a id="today" class="card today q-link" hidden>
       <div>
         <div class="today-label">오늘 받은 질문 · #<span id="today-num"></span></div>
@@ -761,6 +962,36 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="repo-dialog" class="repo-dialog" aria-labelledby="repo-dialog-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="repo-dialog-title">메모 저장소 선택</h2>
+        <p>메모를 커밋할 저장소를 골라주세요. GitHub 앱에 추가한 저장소만 보여요.</p>
+      </div>
+      <button type="button" class="btn icon-btn" data-action="repo-close" aria-label="닫기">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <label class="search dialog-search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input id="repo-search" type="search" placeholder="저장소 이름 검색" autocomplete="off" aria-label="저장소 검색" />
+    </label>
+    <div id="repo-body" class="repo-body"></div>
+    <div class="dialog-foot">
+      <div class="dialog-links">
+        <a id="repo-install-link">저장소 추가·변경</a>
+        <a href="https://github.com/new?name=maeil-mail-memo" target="_blank" rel="noopener">새 저장소 만들기 ↗</a>
+      </div>
+      <button type="button" class="btn btn-sm" data-action="repo-refresh">새로고침</button>
+    </div>
+  </dialog>
 
   <template id="row-template">
     <li class="q-row" data-state="new">
@@ -816,13 +1047,20 @@
     const RETRY_DELAY = 5000;
     const CACHE_TTL = 10 * 60 * 1000; // 새로고침·뒤로가기 때 Firestore를 다시 읽지 않도록 세션 캐시
     const LOCAL_KEY = 'maeil-study-v1';
-    const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
+    // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
+    const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
     const GITHUB_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>';
 
     const els = {
       account: document.getElementById('account'),
       syncStatus: document.getElementById('sync-status'),
       syncText: document.getElementById('sync-text'),
+      repoCard: document.getElementById('repo-card'),
+      repoCardValue: document.getElementById('repo-card-value'),
+      repoOpen: document.getElementById('repo-open'),
+      repoDialog: document.getElementById('repo-dialog'),
+      repoSearch: document.getElementById('repo-search'),
+      repoBody: document.getElementById('repo-body'),
       today: document.getElementById('today'),
       todayNum: document.getElementById('today-num'),
       todayTitle: document.getElementById('today-title'),
@@ -841,6 +1079,9 @@
 
     let data = { questions: [], categories: [], today: null };
     let fb = null;
+    let currentUser = null;
+    let accountMode = 'unconfigured';
+    let repoCache = null;
     const rows = new Map();
     const filter = { level: 'all', category: '', text: '' };
 
@@ -859,7 +1100,8 @@
     }
 
     // ---------- 학습 기록 저장 ----------
-    // 형태: { "fe-1": { level: "review" | "done", memo: "...", memoAt: 1761379200000 } }
+    // items: { "fe-1": { level: "review" | "done", memo: "...", memoAt: 1761379200000 } }
+    // memoRepo: { id, fullName: "owner/name", defaultBranch } (GitHub 로그인 사용자만)
     // 미학습은 level이 없는 상태다. patch의 null은 해당 필드를 지운다는 뜻이다.
 
     function applyPatch(items, patch) {
@@ -876,7 +1118,7 @@
 
     const localBackend = {
       async load() {
-        return readStore('localStorage', LOCAL_KEY) || {};
+        return { items: readStore('localStorage', LOCAL_KEY) || {}, memoRepo: null };
       },
       async write(patch) {
         const items = readStore('localStorage', LOCAL_KEY) || {};
@@ -892,22 +1134,26 @@
     function createFirestoreBackend(uid) {
       const ref = fb.fs.doc(fb.db, 'users', uid);
       const cacheKey = `maeil-cache-${uid}`;
-      const remember = (items) => writeStore('sessionStorage', cacheKey, { at: Date.now(), items });
+      const remember = (snapshot) => writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
 
       return {
         async load() {
           const cached = readStore('sessionStorage', cacheKey);
-          if (cached && Date.now() - cached.at < CACHE_TTL) return cached.items;
+          if (cached && Date.now() - cached.at < CACHE_TTL) {
+            return { items: cached.items, memoRepo: cached.memoRepo || null };
+          }
 
           const snap = await fb.fs.getDoc(ref);
+          const doc = snap.exists() ? snap.data() : {};
           const items = {};
-          for (const [id, item] of Object.entries(snap.exists() ? snap.data().items || {} : {})) {
+          for (const [id, item] of Object.entries(doc.items || {})) {
             if (Object.keys(item).length) items[id] = item;
           }
-          remember(items);
-          return items;
+          const loaded = { items, memoRepo: doc.memoRepo || null };
+          remember(loaded);
+          return loaded;
         },
-        async write(patch, items) {
+        async write(patch, snapshot) {
           const changes = {};
           for (const [id, fields] of Object.entries(patch)) {
             changes[id] = {};
@@ -916,7 +1162,11 @@
             }
           }
           await fb.fs.setDoc(ref, { items: changes }, { merge: true });
-          remember(items);
+          remember(snapshot);
+        },
+        async saveMemoRepo(repo, snapshot) {
+          await fb.fs.setDoc(ref, { memoRepo: repo }, { mergeFields: ['memoRepo'] });
+          remember(snapshot);
         },
         forget() {
           removeStore('sessionStorage', cacheKey);
@@ -927,6 +1177,7 @@
     const store = {
       backend: localBackend,
       items: {},
+      memoRepo: null,
       pending: {},
       saving: null,
       timer: 0,
@@ -939,11 +1190,18 @@
         return this.item(id).level || 'new';
       },
 
-      async use(backend, items) {
+      async use(backend) {
         clearTimeout(this.timer);
         this.backend = backend;
-        this.items = items ?? await backend.load();
+        const { items, memoRepo } = await backend.load();
+        this.items = items;
+        this.memoRepo = memoRepo;
         this.pending = {};
+      },
+
+      async setMemoRepo(repo) {
+        await this.backend.saveMemoRepo(repo, { items: this.items, memoRepo: repo });
+        this.memoRepo = repo;
       },
 
       update(id, fields) {
@@ -959,7 +1217,7 @@
         if (!Object.keys(patch).length) return;
         this.pending = {};
 
-        const writing = this.backend.write(patch, this.items);
+        const writing = this.backend.write(patch, { items: this.items, memoRepo: this.memoRepo });
         this.saving = writing.catch(() => {}).finally(() => { this.saving = null; });
         try {
           await writing;
@@ -1035,6 +1293,8 @@
     async function switchUser(user) {
       await store.flush().catch(() => {});
       store.backend.forget?.();
+      currentUser = user;
+      repoCache = null;
 
       if (!user) {
         await store.use(localBackend);
@@ -1054,12 +1314,17 @@
       if (rows.size) renderAll();
     }
 
-    // 로그인 전에 이 브라우저에 쌓인 기록을 계정으로 옮긴다 (계정에 이미 있는 질문은 계정 쪽을 유지)
+    // 로그인 전에 이 브라우저에 쌓인 기록을 계정으로 옮긴다 (계정에 이미 있는 필드는 계정 쪽을 유지)
     async function moveLocalItems() {
-      const local = await localBackend.load();
-      const moved = Object.entries(local).filter(([id]) => !store.items[id]);
+      const { items: local } = await localBackend.load();
+      const moved = [];
+      for (const [id, item] of Object.entries(local)) {
+        const remote = store.items[id] || {};
+        const fields = Object.fromEntries(Object.entries(item).filter(([key]) => !(key in remote)));
+        if (Object.keys(fields).length) moved.push([id, fields]);
+      }
       if (moved.length) {
-        for (const [id, item] of moved) store.update(id, item);
+        for (const [id, fields] of moved) store.update(id, fields);
         await store.flush();
         toast(`이 브라우저에 있던 기록 ${moved.length}개를 계정으로 옮겼어요.`);
       }
@@ -1068,7 +1333,7 @@
 
     async function login() {
       try {
-        await fb.auth.signInWithPopup(fb.authInstance, new fb.auth.GithubAuthProvider());
+        rememberGithubToken(await fb.auth.signInWithPopup(fb.authInstance, new fb.auth.GithubAuthProvider()));
       } catch (err) {
         if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
         console.error(err);
@@ -1082,7 +1347,227 @@
     async function logout() {
       if (hasDirtyEditor() && !confirm('저장하지 않은 메모가 있어요. 로그아웃할까요?')) return;
       await store.flush().catch(() => {});
+      removeStore('localStorage', githubTokenKey(currentUser.uid));
       await fb.auth.signOut(fb.authInstance);
+    }
+
+    // ---------- GitHub ----------
+
+    const githubTokenKey = (uid) => `maeil-github-token-${uid}`;
+
+    // Firebase는 GitHub 토큰을 로그인하는 순간에만 넘겨주므로 이 기기에 보관해 둔다
+    function rememberGithubToken(result) {
+      const token = fb.auth.GithubAuthProvider.credentialFromResult(result)?.accessToken || null;
+      if (token) writeStore('localStorage', githubTokenKey(result.user.uid), token);
+      return token;
+    }
+
+    // 이미 승인한 계정이면 GitHub 동의 화면 없이 바로 돌아온다
+    async function connectGithub() {
+      const result = await fb.auth.reauthenticateWithPopup(fb.authInstance.currentUser, new fb.auth.GithubAuthProvider());
+      return rememberGithubToken(result);
+    }
+
+    async function githubApi(token, path) {
+      const res = await fetch(`https://api.github.com${path}`, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${token}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+      if (res.status === 401) {
+        removeStore('localStorage', githubTokenKey(currentUser.uid));
+        throw Object.assign(new Error('GitHub 토큰이 만료됐어요.'), { code: 'github/unauthorized' });
+      }
+      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+      return res.json();
+    }
+
+    // 앱을 설치한 저장소 중 잔디가 심어지는 것만 보여준다: 포크·보관 저장소 제외
+    async function listInstalledRepos(token) {
+      const { installations } = await githubApi(token, '/user/installations?per_page=100');
+      const repos = [];
+      for (const installation of installations) {
+        for (let page = 1; page <= 10; page++) {
+          const { repositories } = await githubApi(token, `/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);
+          repos.push(...repositories);
+          if (repositories.length < 100) break;
+        }
+      }
+      return repos
+        .filter((repo) => !repo.fork && !repo.archived)
+        .map((repo) => ({
+          id: repo.id,
+          fullName: repo.full_name,
+          defaultBranch: repo.default_branch,
+          description: repo.description || '',
+        }));
+    }
+
+    // ---------- 메모 저장소 선택 ----------
+
+    function renderRepoCard() {
+      els.repoCard.hidden = accountMode !== 'user';
+      if (els.repoCard.hidden) return;
+
+      const repo = store.memoRepo;
+      els.repoCardValue.replaceChildren();
+      els.repoCardValue.classList.toggle('is-empty', !repo);
+      if (repo) {
+        const link = document.createElement('a');
+        link.href = `https://github.com/${repo.fullName}`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = repo.fullName;
+        els.repoCardValue.append(link);
+      } else {
+        els.repoCardValue.textContent = '아직 선택하지 않았어요';
+      }
+      els.repoOpen.textContent = repo ? '변경' : '저장소 선택';
+    }
+
+    function renderRepoState(message, action) {
+      const state = document.createElement('div');
+      state.className = 'repo-state';
+      const text = document.createElement('span');
+      text.textContent = message;
+      state.append(text);
+      if (action) {
+        const button = document.createElement(action.href ? 'a' : 'button');
+        button.className = 'btn btn-sm btn-primary';
+        if (action.href) {
+          button.href = action.href;
+        } else {
+          button.type = 'button';
+          button.dataset.action = action.name;
+        }
+        button.textContent = action.label;
+        state.append(button);
+      }
+      els.repoBody.replaceChildren(state);
+    }
+
+    function renderRepoList() {
+      if (!repoCache.length) {
+        renderRepoState(
+          '아직 앱에 추가한 저장소가 없어요. 메모를 남길 저장소를 앱에 추가해주세요.',
+          { href: GITHUB_APP_INSTALL_URL, label: 'GitHub에서 저장소 추가' },
+        );
+        return;
+      }
+
+      const term = normalize(els.repoSearch.value);
+      const repos = repoCache.filter((repo) => !term || normalize(`${repo.fullName} ${repo.description}`).includes(term));
+      if (!repos.length) {
+        renderRepoState('검색 결과가 없어요.');
+        return;
+      }
+
+      const list = document.createElement('ul');
+      list.className = 'repo-list';
+      for (const repo of repos) {
+        const selected = store.memoRepo?.id === repo.id;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'repo-item';
+        button.dataset.repoId = repo.id;
+        button.setAttribute('aria-pressed', String(selected));
+
+        const name = document.createElement('span');
+        name.className = 'repo-name';
+        name.textContent = repo.fullName;
+        button.append(name);
+        if (repo.description) {
+          const description = document.createElement('span');
+          description.className = 'repo-desc';
+          description.textContent = repo.description;
+          button.append(description);
+        }
+        if (selected) {
+          const check = document.createElement('span');
+          check.className = 'repo-check';
+          check.textContent = '선택됨';
+          button.append(check);
+        }
+
+        const item = document.createElement('li');
+        item.append(button);
+        list.append(item);
+      }
+      els.repoBody.replaceChildren(list);
+    }
+
+    async function loadRepos(token, { force = false } = {}) {
+      if (repoCache && !force) {
+        renderRepoList();
+        return;
+      }
+      renderRepoState('저장소를 불러오는 중…');
+      try {
+        repoCache = await listInstalledRepos(token);
+        renderRepoList();
+      } catch (err) {
+        console.error(err);
+        if (err.code === 'github/unauthorized') {
+          renderRepoState('GitHub 연결이 만료됐어요. 다시 연결해주세요.', { name: 'repo-connect', label: 'GitHub 다시 연결' });
+        } else {
+          renderRepoState('저장소 목록을 불러오지 못했어요.', { name: 'repo-refresh', label: '다시 시도' });
+        }
+      }
+    }
+
+    // 팝업 차단을 피하려면 클릭 직후 동기적으로 팝업을 열어야 한다
+    async function connectAndLoad() {
+      renderRepoState('GitHub 창에서 계속해주세요…');
+      try {
+        const token = await connectGithub();
+        if (!token) throw new Error('GitHub 토큰을 받지 못했어요.');
+        await loadRepos(token, { force: true });
+      } catch (err) {
+        const connect = { name: 'repo-connect', label: 'GitHub 연결' };
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+          renderRepoState('저장소 목록을 보려면 GitHub 연결이 필요해요.', connect);
+        } else if (err.code === 'auth/popup-blocked') {
+          renderRepoState('팝업이 차단됐어요. 버튼을 눌러 다시 시도해주세요.', connect);
+        } else if (err.code === 'auth/user-mismatch') {
+          renderRepoState('지금 로그인한 GitHub 계정으로 연결해주세요.', connect);
+        } else {
+          console.error(err);
+          renderRepoState('GitHub에 연결하지 못했어요.', connect);
+        }
+      }
+    }
+
+    function loadReposOrConnect(options) {
+      const token = readStore('localStorage', githubTokenKey(currentUser.uid));
+      if (token) loadRepos(token, options);
+      else connectAndLoad();
+    }
+
+    function openRepoDialog() {
+      els.repoSearch.value = '';
+      els.repoDialog.showModal();
+      loadReposOrConnect();
+    }
+
+    async function selectRepo(id) {
+      const repo = repoCache.find((candidate) => String(candidate.id) === id);
+      if (!repo) return;
+      if (store.memoRepo?.id === repo.id) {
+        els.repoDialog.close();
+        return;
+      }
+
+      try {
+        await store.setMemoRepo({ id: repo.id, fullName: repo.fullName, defaultBranch: repo.defaultBranch });
+        renderRepoCard();
+        els.repoDialog.close();
+        toast(`메모 저장소를 ${repo.fullName}(으)로 정했어요.`);
+      } catch (err) {
+        console.error(err);
+        toast('저장소를 저장하지 못했어요. Firestore 규칙이 최신인지 확인해주세요.', 'error');
+      }
     }
 
     // ---------- 질문 목록 ----------
@@ -1137,6 +1622,8 @@
         user: `${name} 계정에 저장돼요`,
         error: '계정 기록을 불러오지 못해 이 브라우저에 임시로 저장하고 있어요',
       };
+      accountMode = mode;
+      renderRepoCard();
       els.syncText.textContent = messages[mode];
       els.syncStatus.dataset.state = mode === 'user' ? 'synced' : mode === 'error' || mode === 'unavailable' ? 'error' : 'local';
 
@@ -1450,8 +1937,33 @@
         applyFilter();
       });
 
+      els.repoOpen.addEventListener('click', openRepoDialog);
+
+      els.repoDialog.addEventListener('click', (e) => {
+        // 바깥(배경)을 누르면 닫는다
+        if (e.target === els.repoDialog) {
+          els.repoDialog.close();
+          return;
+        }
+
+        const repoButton = e.target.closest('.repo-item');
+        if (repoButton) {
+          selectRepo(repoButton.dataset.repoId);
+          return;
+        }
+
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        if (action === 'repo-close') els.repoDialog.close();
+        else if (action === 'repo-connect') connectAndLoad();
+        else if (action === 'repo-refresh') loadReposOrConnect({ force: true });
+      });
+
+      els.repoSearch.addEventListener('input', () => {
+        if (repoCache) renderRepoList();
+      });
+
       document.addEventListener('keydown', (e) => {
-        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || els.repoDialog.open) return;
         if (e.target.closest('input, textarea, select, [contenteditable]')) return;
         e.preventDefault();
         els.search.focus();
@@ -1484,6 +1996,8 @@
     async function main() {
       initTheme();
       renderSkeleton();
+      els.repoCard.querySelector('.repo-card-icon').innerHTML = GITHUB_ICON;
+      document.getElementById('repo-install-link').href = GITHUB_APP_INSTALL_URL;
 
       const dataReady = initData();
       try {
@@ -1501,6 +2015,12 @@
       filter.category = els.category.value;
       bindEvents();
       renderAll();
+
+      // GitHub 앱 설치를 마치고 돌아오면(Setup URL에 setup_action이 붙는다) 저장소 선택 창을 바로 연다
+      if (new URLSearchParams(location.search).has('setup_action')) {
+        history.replaceState(null, '', location.pathname);
+        if (accountMode === 'user') openRepoDialog();
+      }
     }
 
     main();
