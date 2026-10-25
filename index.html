@@ -778,6 +778,7 @@
     }
 
     .memo-count { font-variant-numeric: tabular-nums; }
+    .memo-github.is-error { color: var(--danger); }
 
     .memo-buttons {
       display: flex;
@@ -1029,6 +1030,7 @@
         <div class="memo-info">
           <span class="memo-count"></span>
           <span class="memo-saved"></span>
+          <span class="memo-github"></span>
         </div>
         <div class="memo-buttons">
           <button type="button" class="btn btn-sm" data-action="memo-close">닫기</button>
@@ -1049,6 +1051,7 @@
     const LOCAL_KEY = 'maeil-study-v1';
     // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
     const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
+    const MEMO_BRANCH = 'main';
     const GITHUB_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>';
 
     const els = {
@@ -1083,6 +1086,7 @@
     let accountMode = 'unconfigured';
     let repoCache = null;
     const rows = new Map();
+    const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
     const filter = { level: 'all', category: '', text: '' };
 
     // ---------- 브라우저 저장소 (사생활 보호 모드 등에서 실패해도 동작하도록) ----------
@@ -1368,21 +1372,84 @@
       return rememberGithubToken(result);
     }
 
-    async function githubApi(token, path) {
+    function getGithubToken() {
+      const token = readStore('localStorage', githubTokenKey(currentUser.uid));
+      return token ? Promise.resolve(token) : connectGithub();
+    }
+
+    async function githubApi(token, path, { method = 'GET', body } = {}) {
       const res = await fetch(`https://api.github.com${path}`, {
+        method,
+        cache: 'no-store', // 커밋 직후 다시 읽을 때 오래된 sha를 받지 않도록
         headers: {
           Accept: 'application/vnd.github+json',
           Authorization: `Bearer ${token}`,
           'X-GitHub-Api-Version': '2022-11-28',
+          ...(body && { 'Content-Type': 'application/json' }),
         },
+        body: body && JSON.stringify(body),
       });
       if (res.status === 401) {
         removeStore('localStorage', githubTokenKey(currentUser.uid));
         throw Object.assign(new Error('GitHub 토큰이 만료됐어요.'), { code: 'github/unauthorized' });
       }
-      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+      if (!res.ok) {
+        const { message } = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(message || `GitHub API ${res.status}`), { status: res.status });
+      }
       return res.json();
     }
+
+    function toBase64(text) {
+      let binary = '';
+      for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    }
+
+    // 메모를 선택한 저장소의 main 브랜치에 {id}.md로 커밋한다. 커밋 작성자는 토큰 주인(사용자)이다.
+    async function commitMemo(token, id, text) {
+      const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
+      const title = data.questions.find((q) => q.id === id)?.title || '';
+
+      for (let attempt = 0; ; attempt++) {
+        let sha = null;
+        let emptyRepo = false;
+        try {
+          ({ sha } = await githubApi(token, `${path}?ref=${MEMO_BRANCH}`));
+        } catch (err) {
+          if (err.status !== 404) throw err;
+          emptyRepo = err.message === 'This repository is empty.';
+        }
+
+        try {
+          await githubApi(token, path, {
+            method: 'PUT',
+            body: {
+              message: `${sha ? '메모 수정' : '메모 추가'}: ${id.toUpperCase()} ${title}`.trim(),
+              content: toBase64(`${text}\n`),
+              // 빈 저장소는 브랜치가 아직 없어서 지정하지 않는다. 첫 커밋이 기본 브랜치를 만든다.
+              ...(!emptyRepo && { branch: MEMO_BRANCH }),
+              ...(sha && { sha }),
+            },
+          });
+          return;
+        } catch (err) {
+          // 다른 기기에서 그사이 커밋해 sha가 바뀌었으면 한 번 더 시도한다
+          if (err.status !== 409 || attempt > 0) throw err;
+        }
+      }
+    }
+
+    function githubErrorMessage(err) {
+      if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
+      if (err.code === 'auth/popup-blocked') return '팝업이 차단됐어요. 다시 저장해주세요.';
+      if (/branch|ref/i.test(err.message)) return `${MEMO_BRANCH} 브랜치를 찾을 수 없어요.`;
+      if (err.status === 403 || err.status === 404) return '저장소에 접근할 수 없어요. 앱에 저장소가 추가돼 있는지 확인해주세요.';
+      return 'GitHub에 커밋하지 못했어요.';
+    }
+
+    const canCommit = () => accountMode === 'user' && Boolean(store.memoRepo);
 
     // 앱을 설치한 저장소 중 잔디가 심어지는 것만 보여준다: 포크·보관 저장소 제외
     async function listInstalledRepos(token) {
@@ -1563,7 +1630,12 @@
         await store.setMemoRepo({ id: repo.id, fullName: repo.fullName, defaultBranch: repo.defaultBranch });
         renderRepoCard();
         els.repoDialog.close();
-        toast(`메모 저장소를 ${repo.fullName}(으)로 정했어요.`);
+        // 잔디는 기본 브랜치 커밋만 집계되므로, 기본 브랜치가 main이 아니면 알려준다
+        if (repo.defaultBranch !== MEMO_BRANCH) {
+          toast(`${repo.fullName}의 기본 브랜치가 ${repo.defaultBranch}예요. ${MEMO_BRANCH}에 커밋하면 잔디가 심어지지 않을 수 있어요.`, 'error', 6000);
+        } else {
+          toast(`메모 저장소를 ${repo.fullName}(으)로 정했어요.`);
+        }
       } catch (err) {
         console.error(err);
         toast('저장소를 저장하지 못했어요. Firestore 규칙이 최신인지 확인해주세요.', 'error');
@@ -1782,9 +1854,12 @@
       return row.querySelector('.memo-editor');
     }
 
+    // 고친 내용이 있거나, 저장은 됐지만 GitHub 커밋이 실패해 다시 올려야 하는 상태
     function isDirty(row) {
       const textarea = editorOf(row)?.querySelector('textarea');
-      return Boolean(textarea) && textarea.value.trim() !== (store.item(row.dataset.id).memo || '');
+      if (!textarea) return false;
+      const text = textarea.value.trim();
+      return text !== (store.item(row.dataset.id).memo || '') || (Boolean(text) && uncommitted.has(row.dataset.id));
     }
 
     function hasDirtyEditor() {
@@ -1806,6 +1881,14 @@
       editor.querySelector('.memo-saved').textContent = item.memoAt
         ? `마지막 저장 ${dateFormat.format(item.memoAt)}`
         : '';
+
+      const github = editor.querySelector('.memo-github');
+      const failed = uncommitted.has(row.dataset.id);
+      github.classList.toggle('is-error', failed);
+      github.textContent = !canCommit() || !editor.querySelector('textarea').value.trim() ? ''
+        : failed ? 'GitHub에 아직 올리지 못했어요 · 다시 저장해주세요'
+        : `저장하면 ${store.memoRepo.fullName}의 ${row.dataset.id}.md로 커밋돼요`;
+
       editor.querySelector('[data-action="memo-save"]').disabled = !isDirty(row);
     }
 
@@ -1840,38 +1923,58 @@
       const textarea = editor.querySelector('textarea');
       const saveButton = editor.querySelector('[data-action="memo-save"]');
       const text = textarea.value.trim();
+      const changed = text !== (store.item(id).memo || '');
+      // 메모를 지울 때는 GitHub 파일을 그대로 둔다 (학습 기록으로 남긴다)
+      const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
 
       textarea.value = text;
       saveButton.disabled = true;
       saveButton.textContent = '저장 중…';
-      store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
-      updateRow(id);
+      if (changed) {
+        store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
+        updateRow(id);
+      }
 
-      try {
-        await store.flush();
-        saveErrorShown = false;
-        toast(text ? '메모를 저장했어요.' : '메모를 지웠어요.');
-      } catch (err) {
-        console.error(err);
+      // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
+      const [saved, committed] = await Promise.allSettled([
+        changed ? store.flush() : Promise.resolve(),
+        shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text)) : Promise.resolve(),
+      ]);
+
+      if (shouldCommit) {
+        if (committed.status === 'fulfilled') uncommitted.delete(id);
+        else uncommitted.add(id);
+      }
+
+      if (saved.status === 'rejected') {
+        console.error(saved.reason);
         toast('메모를 저장하지 못했어요. 연결되면 자동으로 다시 저장할게요.', 'error');
         saveErrorShown = true;
         store.timer = setTimeout(flushInBackground, RETRY_DELAY);
-      } finally {
-        saveButton.textContent = '저장';
-        updateEditor(row);
+      } else if (committed.status === 'rejected') {
+        console.error(committed.reason);
+        toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
+      } else {
+        saveErrorShown = false;
+        toast(shouldCommit
+          ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
+          : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
       }
+
+      saveButton.textContent = '저장';
+      updateEditor(row);
     }
 
     // ---------- 기타 ----------
 
     let toastTimer = 0;
 
-    function toast(message, tone = 'info') {
+    function toast(message, tone = 'info', duration = 2800) {
       els.toast.textContent = message;
       els.toast.dataset.tone = tone;
       els.toast.classList.add('show');
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2800);
+      toastTimer = setTimeout(() => els.toast.classList.remove('show'), duration);
     }
 
     function initTheme() {
