@@ -1122,7 +1122,8 @@
     const FIREBASE_VERSION = '10.14.1';
     const MEMO_MAX = 1000;
     const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
-    const RETRY_DELAY = 5000;
+    const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
+    const RETRY_MAX = 10 * 60 * 1000;
     const CACHE_TTL = 10 * 60 * 1000; // 질문을 보고 돌아올 때 Firestore를 다시 읽지 않도록 세션 캐시
     const STALE_AFTER = 5 * 60 * 1000; // 이만큼 자리를 비웠다 돌아오면 다른 기기의 변경을 보려고 다시 읽는다
     // 새로고침은 최신 상태를 보려는 것이므로 세션 캐시를 건너뛴다
@@ -1219,7 +1220,12 @@
     function createFirestoreBackend(uid) {
       const ref = fb.fs.doc(fb.db, 'users', uid);
       const cacheKey = `maeil-cache-${uid}`;
-      const remember = (snapshot) => writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
+      const snapshotKey = `maeil-snapshot-${uid}`; // 불러오기에 실패했을 때 보여줄 마지막 기록
+      const pendingKey = `maeil-pending-${uid}`; // 아직 쓰지 못한 변경 (새로고침해도 남아 다음 접속 때 보낸다)
+      const remember = (snapshot) => {
+        writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
+        writeStore('localStorage', snapshotKey, snapshot);
+      };
 
       return {
         async load({ fresh = false } = {}) {
@@ -1253,8 +1259,20 @@
           await fb.fs.setDoc(ref, { memoRepo: repo }, { mergeFields: ['memoRepo'] });
           remember(snapshot);
         },
+        loadSnapshot() {
+          return readStore('localStorage', snapshotKey) || { items: {}, memoRepo: null };
+        },
+        loadPending() {
+          return readStore('localStorage', pendingKey) || {};
+        },
+        savePending(pending) {
+          if (Object.keys(pending).length) writeStore('localStorage', pendingKey, pending);
+          else removeStore('localStorage', pendingKey);
+        },
+        // 로그아웃할 때 기록 사본을 지운다. 쓰지 못한 변경(pending)은 다음 로그인 때 보내려고 남긴다.
         forget() {
           removeStore('sessionStorage', cacheKey);
+          removeStore('localStorage', snapshotKey);
         },
       };
     }
@@ -1279,17 +1297,26 @@
       async use(backend) {
         clearTimeout(this.timer);
         this.backend = backend;
-        const { items, memoRepo } = await backend.load();
-        this.items = items;
-        this.memoRepo = memoRepo;
-        this.pending = {};
-        this.loadedAt = Date.now();
+        this.setLoaded(await backend.load());
       },
 
-      // 저장할 변경이 없을 때만 부른다
+      // 불러오기에 실패했을 때: 마지막으로 확인한 기록을 보여주고, 변경은 모아 두었다가 나중에 쓴다
+      useOffline(backend) {
+        clearTimeout(this.timer);
+        this.backend = backend;
+        this.setLoaded(backend.loadSnapshot());
+        this.loadedAt = 0; // 탭으로 돌아오면 바로 다시 불러온다
+      },
+
+      // 저장 중인 쓰기가 없을 때만 부른다
       async refresh() {
-        const { items, memoRepo } = await this.backend.load({ fresh: true });
-        applyPatch(items, this.pending); // 읽는 사이에 생긴 변경은 유지한다
+        this.setLoaded(await this.backend.load({ fresh: true }));
+      },
+
+      // 아직 쓰지 못한 변경은 이 기기에서 더 나중에 바꾼 것이므로 불러온 기록 위에 덮는다
+      setLoaded({ items, memoRepo }) {
+        this.pending = this.backend.loadPending?.() || {};
+        applyPatch(items, this.pending);
         this.items = items;
         this.memoRepo = memoRepo;
         this.loadedAt = Date.now();
@@ -1303,6 +1330,7 @@
       update(id, fields) {
         applyPatch(this.items, { [id]: fields });
         this.pending[id] = { ...this.pending[id], ...fields };
+        this.backend.savePending?.(this.pending);
       },
 
       async flush() {
@@ -1323,6 +1351,8 @@
             this.pending[id] = { ...fields, ...this.pending[id] };
           }
           throw err;
+        } finally {
+          this.backend.savePending?.(this.pending);
         }
       },
 
@@ -1333,30 +1363,59 @@
 
     let saveErrorShown = false;
 
+    let retryDelay = RETRY_BASE;
+
     function renderSaveState(state) {
       els.saveState.dataset.state = state;
-      els.saveState.textContent = { pending: '저장 중…', saved: '저장됨', failed: '저장 실패 · 다시 시도하는 중' }[state] || '';
+      els.saveState.textContent = {
+        pending: '저장 중…',
+        saved: '저장됨',
+        failed: '저장 실패 · 이 기기에 보관하고 다시 시도하는 중',
+        held: '저장 거부됨 · 이 기기에 보관 중',
+      }[state] || '';
+    }
+
+    // 다시 보내도 소용없는 오류(규칙 거부, 문서 크기 초과 등)는 자동 재시도를 멈추고 다음 접속 때 다시 보낸다
+    const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
+
+    function saveErrorMessage(err) {
+      if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
+      if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
+      return '저장하지 못했어요. 바꾼 내용은 이 기기에 보관했다가 연결되면 저장할게요.';
+    }
+
+    // 실패한 저장을 알리고, 일시적인 오류면 간격을 늘려 가며 다시 시도한다
+    function handleSaveError(err) {
+      console.error(err);
+      if (!saveErrorShown) toast(saveErrorMessage(err), 'error', 5000);
+      saveErrorShown = true;
+      if (isPermanentError(err)) {
+        renderSaveState('held');
+        return;
+      }
+      renderSaveState('failed');
+      clearTimeout(store.timer);
+      store.timer = setTimeout(flushInBackground, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
     }
 
     function flushInBackground() {
       store.flush()
         .then(() => {
           saveErrorShown = false;
+          retryDelay = RETRY_BASE;
           renderSaveState(store.busy ? 'pending' : 'saved');
+          if (accountMode === 'error') refreshIfStale(); // 쓰기가 됐으니 기록도 다시 불러와 본다
         })
-        .catch((err) => {
-          console.error(err);
-          if (!saveErrorShown) toast('저장하지 못했어요. 연결되면 자동으로 다시 저장할게요.', 'error');
-          saveErrorShown = true;
-          renderSaveState('failed');
-          store.timer = setTimeout(flushInBackground, RETRY_DELAY);
-        });
+        .catch(handleSaveError);
     }
 
     function saveSoon() {
       renderSaveState('pending');
       clearTimeout(store.timer);
-      store.timer = setTimeout(flushInBackground, LEVEL_SAVE_DELAY);
+      // 이 브라우저에만 저장할 때는 비용이 없으니 바로 쓴다
+      if (store.backend === localBackend) flushInBackground();
+      else store.timer = setTimeout(flushInBackground, LEVEL_SAVE_DELAY);
     }
 
     // ---------- Firebase ----------
@@ -1406,15 +1465,18 @@
         await store.use(localBackend);
         renderAccount({ mode: 'guest' });
       } else {
+        const backend = createFirestoreBackend(user.uid);
         try {
-          await store.use(createFirestoreBackend(user.uid));
+          await store.use(backend);
           await moveLocalItems();
           renderAccount({ mode: 'user', user });
         } catch (err) {
           console.error(err);
-          await store.use(localBackend);
+          store.useOffline(backend);
           renderAccount({ mode: 'error', user });
         }
+        // 지난 접속에서 쓰지 못한 변경이 남아 있으면 보낸다
+        if (store.busy) flushInBackground();
       }
 
       if (rows.size) renderAll();
@@ -1543,11 +1605,13 @@
       if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
       if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
       if (err.code === 'auth/popup-blocked') return '팝업이 차단됐어요. 다시 저장해주세요.';
+      if (err.status === 429 || /rate limit/i.test(err.message)) return 'GitHub 요청 한도에 걸렸어요. 잠시 후 다시 저장해주세요.';
       if (err.status === 403 || err.status === 404) return '저장소에 접근할 수 없어요. 앱에 저장소가 추가돼 있는지 확인해주세요.';
       return `(${err.message})`;
     }
 
-    const canCommit = () => accountMode === 'user' && Boolean(store.memoRepo);
+    // GitHub 커밋은 Firestore와 별개라, 계정 기록을 못 불러온 상태(error)에서도 한다
+    const canCommit = () => (accountMode === 'user' || accountMode === 'error') && Boolean(store.memoRepo);
 
     // 앱을 설치한 저장소 중 잔디가 심어지는 것만 보여준다: 포크·보관 저장소 제외
     async function listInstalledRepos(token) {
@@ -1784,7 +1848,7 @@
         unavailable: 'Firebase를 불러오지 못해 이 브라우저에만 저장하고 있어요',
         guest: '이 브라우저에만 저장돼요 · 로그인하면 다른 기기에서도 이어서 볼 수 있어요',
         user: `${name} 계정에 저장돼요`,
-        error: '계정 기록을 불러오지 못해 이 브라우저에 임시로 저장하고 있어요',
+        error: '계정 기록을 불러오지 못했어요 · 마지막으로 불러온 기록을 보여주고, 바꾼 내용은 연결되면 저장해요',
       };
       accountMode = mode;
       renderRepoCard();
@@ -2053,18 +2117,17 @@
         else uncommitted.add(id);
       }
 
-      if (changed) renderSaveState(saved.status === 'rejected' ? 'failed' : store.busy ? 'pending' : 'saved');
+      if (changed && saved.status === 'fulfilled') renderSaveState(store.busy ? 'pending' : 'saved');
 
       if (saved.status === 'rejected') {
-        console.error(saved.reason);
-        toast('메모를 저장하지 못했어요. 연결되면 자동으로 다시 저장할게요.', 'error');
-        saveErrorShown = true;
-        store.timer = setTimeout(flushInBackground, RETRY_DELAY);
+        saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
+        handleSaveError(saved.reason);
       } else if (committed.status === 'rejected') {
         console.error(committed.reason);
         toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
       } else {
         saveErrorShown = false;
+        retryDelay = RETRY_BASE;
         toast(shouldCommit
           ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
           : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
@@ -2075,14 +2138,19 @@
     }
 
     // 다른 기기에서 바꾼 내용을 보도록, 오래 자리를 비웠다 돌아오면 다시 읽는다 (Firestore 읽기 1회)
+    // 계정 기록을 못 불러온 상태(error)였다면 다시 불러오는 데 성공한 순간 정상으로 돌아온다
     async function refreshIfStale() {
-      if (accountMode !== 'user' || store.busy || hasDirtyEditor()) return;
+      if ((accountMode !== 'user' && accountMode !== 'error') || store.saving || hasDirtyEditor()) return;
       if (Date.now() - store.loadedAt < STALE_AFTER) return;
       try {
         await store.refresh();
       } catch (err) {
         console.error(err);
         return;
+      }
+      if (accountMode === 'error') {
+        renderAccount({ mode: 'user', user: currentUser });
+        if (store.busy) flushInBackground();
       }
 
       for (const q of data.questions) updateRow(q.id);
@@ -2211,10 +2279,10 @@
         els.search.focus();
       });
 
-      // 질문을 열기 전에 아직 쓰지 않은 변경을 먼저 저장한다
+      // 질문을 열기 전에 아직 쓰지 않은 변경을 먼저 저장한다 (저장이 실패하는 중이면 기다리지 않는다. 변경은 이 기기에 보관돼 있다)
       document.addEventListener('click', async (e) => {
         const link = e.target.closest('a.q-link');
-        if (!link || !store.busy || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (!link || !store.busy || saveErrorShown || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
         await Promise.race([
           store.flush().catch(() => {}),
@@ -2224,12 +2292,13 @@
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && store.busy) flushInBackground();
+        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown) flushInBackground();
         else if (document.visibilityState === 'visible') refreshIfStale();
       });
 
+      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모 편집뿐이다
       window.addEventListener('beforeunload', (e) => {
-        if (store.busy || hasDirtyEditor()) {
+        if (hasDirtyEditor()) {
           e.preventDefault();
           e.returnValue = '';
         }
