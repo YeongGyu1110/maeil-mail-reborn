@@ -1411,6 +1411,11 @@
     }
 
     function saveSoon() {
+      // 거부된 계정은 보내 봐야 거부되니 요청하지 않는다 (변경은 이 기기에 보관돼 있다)
+      if (accountMode === 'denied') {
+        renderSaveState('held');
+        return;
+      }
       renderSaveState('pending');
       clearTimeout(store.timer);
       // 이 브라우저에만 저장할 때는 비용이 없으니 바로 쓴다
@@ -1473,10 +1478,11 @@
         } catch (err) {
           console.error(err);
           store.useOffline(backend);
-          renderAccount({ mode: 'error', user });
+          // 규칙에서 거부됨(소유자 계정이 아님): 동기화하지 않고 이 기기에만 보관한다
+          renderAccount({ mode: err?.code === 'permission-denied' ? 'denied' : 'error', user });
         }
         // 지난 접속에서 쓰지 못한 변경이 남아 있으면 보낸다
-        if (store.busy) flushInBackground();
+        if (store.busy && accountMode !== 'denied') flushInBackground();
       }
 
       if (rows.size) renderAll();
@@ -1849,12 +1855,13 @@
         guest: '이 브라우저에만 저장돼요 · 로그인하면 다른 기기에서도 이어서 볼 수 있어요',
         user: `${name} 계정에 저장돼요`,
         error: '계정 기록을 불러오지 못했어요 · 마지막으로 불러온 기록을 보여주고, 바꾼 내용은 연결되면 저장해요',
+        denied: '이 계정은 기록 동기화가 허용되지 않았어요 · 바꾼 내용은 이 기기에만 보관돼요',
       };
       accountMode = mode;
       renderRepoCard();
       renderSaveState('');
       els.syncText.textContent = messages[mode];
-      els.syncStatus.dataset.state = mode === 'user' ? 'synced' : mode === 'error' || mode === 'unavailable' ? 'error' : 'local';
+      els.syncStatus.dataset.state = mode === 'user' ? 'synced' : ['error', 'unavailable', 'denied'].includes(mode) ? 'error' : 'local';
 
       els.account.replaceChildren();
       if (mode === 'guest') {
@@ -2282,7 +2289,8 @@
       // 질문을 열기 전에 아직 쓰지 않은 변경을 먼저 저장한다 (저장이 실패하는 중이면 기다리지 않는다. 변경은 이 기기에 보관돼 있다)
       document.addEventListener('click', async (e) => {
         const link = e.target.closest('a.q-link');
-        if (!link || !store.busy || saveErrorShown || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (!link || !store.busy || saveErrorShown || accountMode === 'denied') return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
         await Promise.race([
           store.flush().catch(() => {}),
@@ -2292,7 +2300,7 @@
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown) flushInBackground();
+        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown && accountMode !== 'denied') flushInBackground();
         else if (document.visibilityState === 'visible') refreshIfStale();
       });
 
