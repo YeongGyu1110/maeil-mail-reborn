@@ -39,6 +39,7 @@
       --review: #b45309;
       --review-bar: #f59e0b;
       --review-light: #fff4e5;
+      --star: #f0a500;
       --danger: #e5484d;
       --skeleton-base: #f0f2f5;
       --skeleton-highlight: #e4e7eb;
@@ -59,6 +60,7 @@
       --review: #fbbf24;
       --review-bar: #f5a524;
       --review-light: rgba(251, 191, 36, 0.14);
+      --star: #fcc419;
       --danger: #ff6369;
       --skeleton-base: #24272c;
       --skeleton-highlight: #30353c;
@@ -204,8 +206,9 @@
 
     .sync-status {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
+      gap: 4px 8px;
       margin: 0 0 20px;
       font-size: 13px;
       color: var(--text-muted);
@@ -221,6 +224,14 @@
 
     .sync-status[data-state="synced"] .sync-dot { background: var(--primary); }
     .sync-status[data-state="error"] .sync-dot { background: var(--danger); }
+
+    .save-state:not(:empty)::before {
+      content: "·";
+      margin-right: 8px;
+    }
+
+    .save-state[data-state="saved"] { color: var(--primary); }
+    .save-state[data-state="failed"] { color: var(--danger); }
 
     /* 메모 저장소 */
     .repo-card {
@@ -602,6 +613,30 @@
       cursor: pointer;
     }
 
+    .toolbar-filters {
+      display: flex;
+      gap: 8px;
+    }
+
+    .star-filter {
+      height: 46px;
+      border-radius: 12px;
+    }
+
+    .star-filter svg { color: var(--text-muted); }
+
+    .star-filter[aria-pressed="true"] {
+      border-color: var(--star);
+      color: var(--text-main);
+    }
+
+    .star-filter[aria-pressed="true"] svg {
+      color: var(--star);
+      fill: currentColor;
+    }
+
+    .star-count { font-variant-numeric: tabular-nums; }
+
     .list-head {
       margin: 0 4px 8px;
       font-size: 13px;
@@ -625,10 +660,37 @@
 
     .q-main {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      gap: 10px 16px;
+      gap: 10px 12px;
     }
+
+    .star-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      margin-left: -6px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-muted);
+      opacity: 0.55;
+      cursor: pointer;
+      transition: color 0.15s, background-color 0.15s, opacity 0.15s;
+    }
+
+    .star-btn:hover {
+      background: var(--bg-subtle);
+      opacity: 1;
+    }
+
+    .star-btn[aria-pressed="true"] { opacity: 1; }
+
+    .star-btn[aria-pressed="true"] { color: var(--star); }
+    .star-btn[aria-pressed="true"] svg { fill: currentColor; }
 
     .q-num {
       display: flex;
@@ -856,11 +918,11 @@
       .stat-count { font-size: 20px; }
 
       .toolbar { flex-direction: column; }
-      .toolbar select { width: 100%; max-width: none; }
+      .toolbar select { flex: 1; min-width: 0; max-width: none; }
 
       .q-row { padding: 16px; }
-      .q-main { grid-template-columns: minmax(0, 1fr); }
-      .q-actions { justify-content: space-between; }
+      .q-main { grid-template-columns: auto minmax(0, 1fr); }
+      .q-actions { grid-column: 1 / -1; justify-content: space-between; }
 
       .today { padding: 16px 18px; }
       .today-title { font-size: 16px; }
@@ -899,6 +961,7 @@
     <p id="sync-status" class="sync-status">
       <span class="sync-dot"></span>
       <span id="sync-text">불러오는 중…</span>
+      <span id="save-state" class="save-state" aria-live="polite"></span>
     </p>
 
     <section id="repo-card" class="card repo-card" aria-label="메모 저장소" hidden>
@@ -953,9 +1016,17 @@
         <input id="search" type="search" placeholder="질문, 키워드, 내 메모 검색" autocomplete="off" aria-label="질문 검색" />
         <kbd class="search-kbd">/</kbd>
       </label>
-      <select id="category" aria-label="카테고리">
-        <option value="">모든 카테고리</option>
-      </select>
+      <div class="toolbar-filters">
+        <select id="category" aria-label="카테고리">
+          <option value="">모든 카테고리</option>
+        </select>
+        <button type="button" id="star-filter" class="btn star-filter" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          별표 <span id="star-count" class="star-count">0</span>
+        </button>
+      </div>
     </div>
 
     <div id="result-count" class="list-head">&nbsp;</div>
@@ -997,6 +1068,11 @@
   <template id="row-template">
     <li class="q-row" data-state="new">
       <div class="q-main">
+        <button type="button" class="star-btn" data-action="star" aria-pressed="false" aria-label="별표">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </button>
         <div>
           <div class="q-num"><span class="dot"></span><span class="q-id"></span></div>
           <a class="q-title q-link"></a>
@@ -1045,9 +1121,12 @@
 
     const FIREBASE_VERSION = '10.14.1';
     const MEMO_MAX = 1000;
-    const LEVEL_SAVE_DELAY = 1200; // 학습 수준 변경을 모아 한 번에 쓴다
+    const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
     const RETRY_DELAY = 5000;
-    const CACHE_TTL = 10 * 60 * 1000; // 새로고침·뒤로가기 때 Firestore를 다시 읽지 않도록 세션 캐시
+    const CACHE_TTL = 10 * 60 * 1000; // 질문을 보고 돌아올 때 Firestore를 다시 읽지 않도록 세션 캐시
+    const STALE_AFTER = 5 * 60 * 1000; // 이만큼 자리를 비웠다 돌아오면 다른 기기의 변경을 보려고 다시 읽는다
+    // 새로고침은 최신 상태를 보려는 것이므로 세션 캐시를 건너뛴다
+    const PAGE_RELOADED = performance.getEntriesByType('navigation')[0]?.type === 'reload';
     const LOCAL_KEY = 'maeil-study-v1';
     // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
     const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
@@ -1057,6 +1136,7 @@
       account: document.getElementById('account'),
       syncStatus: document.getElementById('sync-status'),
       syncText: document.getElementById('sync-text'),
+      saveState: document.getElementById('save-state'),
       repoCard: document.getElementById('repo-card'),
       repoCardValue: document.getElementById('repo-card-value'),
       repoOpen: document.getElementById('repo-open'),
@@ -1072,6 +1152,8 @@
       progressText: document.getElementById('progress-text'),
       search: document.getElementById('search'),
       category: document.getElementById('category'),
+      starFilter: document.getElementById('star-filter'),
+      starCount: document.getElementById('star-count'),
       resultCount: document.getElementById('result-count'),
       list: document.getElementById('list'),
       toast: document.getElementById('toast'),
@@ -1086,7 +1168,7 @@
     let repoCache = null;
     const rows = new Map();
     const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
-    const filter = { level: 'all', category: '', text: '' };
+    const filter = { level: 'all', category: '', text: '', starred: false };
 
     // ---------- 브라우저 저장소 (사생활 보호 모드 등에서 실패해도 동작하도록) ----------
 
@@ -1103,9 +1185,9 @@
     }
 
     // ---------- 학습 기록 저장 ----------
-    // items: { "fe-1": { level: "review" | "done", memo: "...", memoAt: 1761379200000 } }
+    // items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000 } }
     // memoRepo: { id, fullName: "owner/name" } (GitHub 로그인 사용자만)
-    // 미학습은 level이 없는 상태다. patch의 null은 해당 필드를 지운다는 뜻이다.
+    // 미학습은 level이 없고, 별표가 없으면 starred가 없다. patch의 null은 해당 필드를 지운다는 뜻이다.
 
     function applyPatch(items, patch) {
       for (const [id, fields] of Object.entries(patch)) {
@@ -1140,9 +1222,9 @@
       const remember = (snapshot) => writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
 
       return {
-        async load() {
+        async load({ fresh = false } = {}) {
           const cached = readStore('sessionStorage', cacheKey);
-          if (cached && Date.now() - cached.at < CACHE_TTL) {
+          if (!fresh && !PAGE_RELOADED && cached && Date.now() - cached.at < CACHE_TTL) {
             return { items: cached.items, memoRepo: cached.memoRepo || null };
           }
 
@@ -1184,6 +1266,7 @@
       pending: {},
       saving: null,
       timer: 0,
+      loadedAt: 0,
 
       item(id) {
         return this.items[id] || {};
@@ -1200,6 +1283,16 @@
         this.items = items;
         this.memoRepo = memoRepo;
         this.pending = {};
+        this.loadedAt = Date.now();
+      },
+
+      // 저장할 변경이 없을 때만 부른다
+      async refresh() {
+        const { items, memoRepo } = await this.backend.load({ fresh: true });
+        applyPatch(items, this.pending); // 읽는 사이에 생긴 변경은 유지한다
+        this.items = items;
+        this.memoRepo = memoRepo;
+        this.loadedAt = Date.now();
       },
 
       async setMemoRepo(repo) {
@@ -1240,18 +1333,28 @@
 
     let saveErrorShown = false;
 
+    function renderSaveState(state) {
+      els.saveState.dataset.state = state;
+      els.saveState.textContent = { pending: '저장 중…', saved: '저장됨', failed: '저장 실패 · 다시 시도하는 중' }[state] || '';
+    }
+
     function flushInBackground() {
       store.flush()
-        .then(() => { saveErrorShown = false; })
+        .then(() => {
+          saveErrorShown = false;
+          renderSaveState(store.busy ? 'pending' : 'saved');
+        })
         .catch((err) => {
           console.error(err);
           if (!saveErrorShown) toast('저장하지 못했어요. 연결되면 자동으로 다시 저장할게요.', 'error');
           saveErrorShown = true;
+          renderSaveState('failed');
           store.timer = setTimeout(flushInBackground, RETRY_DELAY);
         });
     }
 
     function saveSoon() {
+      renderSaveState('pending');
       clearTimeout(store.timer);
       store.timer = setTimeout(flushInBackground, LEVEL_SAVE_DELAY);
     }
@@ -1685,6 +1788,7 @@
       };
       accountMode = mode;
       renderRepoCard();
+      renderSaveState('');
       els.syncText.textContent = messages[mode];
       els.syncStatus.dataset.state = mode === 'user' ? 'synced' : mode === 'error' || mode === 'unavailable' ? 'error' : 'local';
 
@@ -1783,6 +1887,10 @@
         button.setAttribute('aria-pressed', String(button.dataset.level === level));
       }
 
+      const star = row.querySelector('.star-btn');
+      star.setAttribute('aria-pressed', String(Boolean(item.starred)));
+      star.setAttribute('aria-label', item.starred ? '별표 해제' : '별표');
+
       const preview = row.querySelector('.q-memo-preview');
       preview.textContent = item.memo ? item.memo.replace(/\s+/g, ' ') : '';
       preview.hidden = !item.memo;
@@ -1809,17 +1917,19 @@
       els.progressDone.style.width = `${percent(counts.done)}%`;
       els.progressReview.style.width = `${percent(counts.review)}%`;
       els.progressText.textContent = `${counts.all}개 중 ${counts.done}개 완벽 이해 (${Math.round(percent(counts.done))}%)`;
+      els.starCount.textContent = data.questions.filter((q) => store.item(q.id).starred).length;
     }
 
     const normalize = (text) => text.toLowerCase().replace(/\s+/g, '');
 
-    // 학습 수준을 바꿀 때는 다시 거르지 않는다. 필터 중인 행이 눈앞에서 사라지지 않도록.
+    // 학습 수준이나 별표를 바꿀 때는 다시 거르지 않는다. 필터 중인 행이 눈앞에서 사라지지 않도록.
     function applyFilter() {
       const term = normalize(filter.text);
       let shown = 0;
       for (const q of data.questions) {
         const item = store.item(q.id);
         const visible = (filter.level === 'all' || filter.level === (item.level || 'new'))
+          && (!filter.starred || item.starred)
           && (!filter.category || q.category === filter.category)
           && (!term || normalize(`${q.id} ${q.title} ${item.memo || ''}`).includes(term));
         rows.get(q.id).hidden = !visible;
@@ -1829,11 +1939,18 @@
       els.resultCount.textContent = `질문 ${shown}개`;
     }
 
-    // ---------- 학습 수준 & 메모 ----------
+    // ---------- 학습 수준, 별표 & 메모 ----------
 
     function setLevel(id, level) {
       if (store.level(id) === level) return;
       store.update(id, { level: level === 'new' ? null : level });
+      updateRow(id);
+      updateStats();
+      saveSoon();
+    }
+
+    function toggleStar(id) {
+      store.update(id, { starred: store.item(id).starred ? null : true });
       updateRow(id);
       updateStats();
       saveSoon();
@@ -1922,6 +2039,7 @@
       if (changed) {
         store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
         updateRow(id);
+        renderSaveState('pending');
       }
 
       // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
@@ -1934,6 +2052,8 @@
         if (committed.status === 'fulfilled') uncommitted.delete(id);
         else uncommitted.add(id);
       }
+
+      if (changed) renderSaveState(saved.status === 'rejected' ? 'failed' : store.busy ? 'pending' : 'saved');
 
       if (saved.status === 'rejected') {
         console.error(saved.reason);
@@ -1952,6 +2072,29 @@
 
       saveButton.textContent = '저장';
       updateEditor(row);
+    }
+
+    // 다른 기기에서 바꾼 내용을 보도록, 오래 자리를 비웠다 돌아오면 다시 읽는다 (Firestore 읽기 1회)
+    async function refreshIfStale() {
+      if (accountMode !== 'user' || store.busy || hasDirtyEditor()) return;
+      if (Date.now() - store.loadedAt < STALE_AFTER) return;
+      try {
+        await store.refresh();
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+
+      for (const q of data.questions) updateRow(q.id);
+      for (const row of rows.values()) {
+        const textarea = editorOf(row)?.querySelector('textarea');
+        if (!textarea) continue;
+        textarea.value = store.item(row.dataset.id).memo || '';
+        autosize(textarea);
+        updateEditor(row);
+      }
+      updateStats();
+      renderRepoCard();
     }
 
     // ---------- 기타 ----------
@@ -1987,7 +2130,8 @@
         }
 
         const action = e.target.closest('[data-action]')?.dataset.action;
-        if (action === 'memo') editorOf(row) ? closeEditor(row) : openEditor(row);
+        if (action === 'star') toggleStar(row.dataset.id);
+        else if (action === 'memo') editorOf(row) ? closeEditor(row) : openEditor(row);
         else if (action === 'memo-close') closeEditor(row);
         else if (action === 'memo-save') saveMemo(row);
       });
@@ -2026,6 +2170,12 @@
 
       els.category.addEventListener('change', () => {
         filter.category = els.category.value;
+        applyFilter();
+      });
+
+      els.starFilter.addEventListener('click', () => {
+        filter.starred = !filter.starred;
+        els.starFilter.setAttribute('aria-pressed', String(filter.starred));
         applyFilter();
       });
 
@@ -2074,7 +2224,8 @@
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && store.busy) store.flush().catch(() => {});
+        if (document.visibilityState === 'hidden' && store.busy) flushInBackground();
+        else if (document.visibilityState === 'visible') refreshIfStale();
       });
 
       window.addEventListener('beforeunload', (e) => {
