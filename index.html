@@ -3,16 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>매일메일 면접 뷰어</title>
+  <title>매일메일</title>
+
+  <script>
+    // 기존 메일 링크(/?q=fe-1)는 질문 뷰어로 보낸다
+    if (new URLSearchParams(location.search).has('q')) {
+      location.replace('questions/' + location.search);
+    }
+
+    // 렌더링 전에 테마를 적용해 깜빡임을 막는다
+    (function () {
+      let saved = null;
+      try { saved = localStorage.getItem('theme'); } catch (e) {}
+      const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
 
   <!-- Pretendard 폰트 -->
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-
-  <!-- 마크다운 파서 및 Prism.js (고정 테마 CSS 제거 후 CSS 변수로 일원화) -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
 
   <link rel="icon" href="favicon.png" type="image/png">
 
@@ -20,115 +29,830 @@
     :root {
       --bg-body: #f9fafb;
       --bg-card: #ffffff;
+      --bg-subtle: #f2f4f6;
       --border-color: #e5e8eb;
       --text-main: #191f28;
       --text-sub: #333d4b;
       --text-muted: #8b95a1;
       --primary: #00a86b;
       --primary-light: #e8f5e9;
-      --code-inline-bg: #eaf5ee;
-      --code-inline-color: #0b7a48;
-      --table-header-bg: #f9fafb;
+      --review: #b45309;
+      --review-bar: #f59e0b;
+      --review-light: #fff4e5;
+      --star: #f0a500;
+      --danger: #e5484d;
       --skeleton-base: #f0f2f5;
       --skeleton-highlight: #e4e7eb;
-
-      /* [라이트 테마] 코드 블록 & 복사 버튼 */
-      --code-block-bg: #f6f8fa;
-      --code-block-border: #e1e4e8;
-      --code-block-text: #24292f;
-      --code-btn-bg: rgba(0, 0, 0, 0.05);
-      --code-btn-border: rgba(0, 0, 0, 0.1);
-      --code-btn-text: #57606a;
-      --code-btn-hover-bg: rgba(0, 0, 0, 0.1);
-      --code-btn-hover-text: #24292f;
-
-      /* [라이트 테마] 신택스 하이라이팅 (GitHub Light 톤) */
-      --syntax-comment: #6e7781;
-      --syntax-punctuation: #57606a;
-      --syntax-keyword: #cf222e;
-      --syntax-tag: #116329;
-      --syntax-string: #0a3069;
-      --syntax-number: #0550ae;
-      --syntax-function: #8250df;
-      --syntax-operator: #cf222e;
-      --syntax-variable: #953800;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
     }
 
     /* 다크 테마 팔레트 */
     [data-theme="dark"] {
       --bg-body: #111315;
       --bg-card: #181a1d;
+      --bg-subtle: #202327;
       --border-color: #2c3138;
       --text-main: #f0f3f6;
       --text-sub: #c5cbd3;
       --text-muted: #767f8d;
       --primary: #00c47d;
       --primary-light: rgba(0, 196, 125, 0.16);
-      --code-inline-bg: rgba(0, 196, 125, 0.14);
-      --code-inline-color: #34d399;
-      --table-header-bg: #202327;
+      --review: #fbbf24;
+      --review-bar: #f5a524;
+      --review-light: rgba(251, 191, 36, 0.14);
+      --star: #fcc419;
+      --danger: #ff6369;
       --skeleton-base: #24272c;
       --skeleton-highlight: #30353c;
-
-      /* [다크 테마] 코드 블록 & 복사 버튼 */
-      --code-block-bg: #121417;
-      --code-block-border: #282c34;
-      --code-block-text: #e6edf3;
-      --code-btn-bg: rgba(255, 255, 255, 0.08);
-      --code-btn-border: rgba(255, 255, 255, 0.15);
-      --code-btn-text: #8b949e;
-      --code-btn-hover-bg: rgba(255, 255, 255, 0.18);
-      --code-btn-hover-text: #f0f6fc;
-
-      /* [다크 테마] 신택스 하이라이팅 (GitHub / One Dark 톤) */
-      --syntax-comment: #8b949e;
-      --syntax-punctuation: #7d8590;
-      --syntax-keyword: #ff7b72;
-      --syntax-tag: #7ee787;
-      --syntax-string: #a5d6ff;
-      --syntax-number: #79c0ff;
-      --syntax-function: #d2a8ff;
-      --syntax-operator: #ff7b72;
-      --syntax-variable: #ffa657;
+      --shadow: none;
     }
 
-    /* 상단 헤더 바 & 테마 토글 버튼 */
-    .header-bar {
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.6;
+      letter-spacing: -0.02em;
+      color: var(--text-sub);
+      background-color: var(--bg-body);
+      margin: 0;
+      padding: 40px 20px 80px;
+      transition: background-color 0.2s;
+    }
+
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    [hidden] { display: none !important; }
+
+    /* 헤더 */
+    .site-header {
       display: flex;
       justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--text-main);
+      letter-spacing: -0.03em;
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
       align-items: center;
-      margin-bottom: 12px;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
-    .header-bar .badge,
-    .header-bar .skeleton-badge {
-      margin-bottom: 0;
+    .account {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    .theme-toggle-btn {
+    .account-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .account-user img {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--bg-subtle);
+    }
+
+    .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 36px;
+      gap: 6px;
       height: 36px;
+      padding: 0 14px;
       border-radius: 8px;
-      background: transparent;
       border: 1px solid var(--border-color);
+      background: var(--bg-card);
       color: var(--text-sub);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
       cursor: pointer;
-      transition: background-color 0.2s, color 0.2s;
+      white-space: nowrap;
+      transition: background-color 0.2s, color 0.2s, border-color 0.2s;
     }
 
-    .theme-toggle-btn:hover {
-      background-color: var(--table-header-bg);
+    .btn:hover:not(:disabled) {
+      background: var(--bg-subtle);
       color: var(--text-main);
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary);
+      color: #ffffff;
+      filter: brightness(1.05);
+    }
+
+    .btn-sm {
+      height: 32px;
+      padding: 0 12px;
+      font-size: 13px;
+    }
+
+    .icon-btn {
+      width: 36px;
+      padding: 0;
     }
 
     .sun-icon { display: none; }
     .moon-icon { display: block; }
-
     [data-theme="dark"] .sun-icon { display: block; }
     [data-theme="dark"] .moon-icon { display: none; }
+
+    .sync-status {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 8px;
+      margin: 0 0 20px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .sync-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--text-muted);
+    }
+
+    .sync-status[data-state="synced"] .sync-dot { background: var(--primary); }
+    .sync-status[data-state="error"] .sync-dot { background: var(--danger); }
+
+    .save-state:not(:empty)::before {
+      content: "·";
+      margin-right: 8px;
+    }
+
+    .save-state[data-state="saved"] { color: var(--primary); }
+    .save-state[data-state="failed"] { color: var(--danger); }
+
+    /* 메모 저장소 */
+    .repo-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+
+    .repo-card-icon {
+      display: flex;
+      flex-shrink: 0;
+      color: var(--text-main);
+    }
+
+    .repo-card-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .repo-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .repo-card-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .repo-card-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .repo-card-value.is-empty {
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .repo-card-value a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .repo-card-value a:hover { color: var(--primary); }
+
+    .repo-dialog {
+      width: min(520px, calc(100% - 32px));
+      max-height: min(640px, calc(100% - 64px));
+      padding: 0;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      background: var(--bg-card);
+      color: var(--text-sub);
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+    }
+
+    .repo-dialog[open] {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .repo-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+    .dialog-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 20px 20px 12px;
+    }
+
+    .dialog-head h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .dialog-head p {
+      margin: 4px 0 0;
+      font-size: 13.5px;
+      color: var(--text-muted);
+    }
+
+    .dialog-search {
+      flex: none;
+      margin: 0 20px 8px;
+    }
+
+    .repo-body {
+      flex: 1;
+      min-height: 180px;
+      overflow-y: auto;
+      padding: 4px 12px 8px;
+    }
+
+    .repo-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .repo-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2px 12px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .repo-item:hover { background: var(--bg-subtle); }
+    .repo-item[aria-pressed="true"] { background: var(--primary-light); }
+
+    .repo-name,
+    .repo-desc {
+      grid-column: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .repo-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .repo-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .repo-check {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      align-self: center;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .repo-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin: 0;
+      padding: 40px 12px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .dialog-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px 16px;
+      border-top: 1px solid var(--border-color);
+      font-size: 13.5px;
+    }
+
+    .dialog-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 16px;
+    }
+
+    .dialog-foot a {
+      color: var(--primary);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .dialog-foot a:hover { text-decoration: underline; }
+
+    /* 오늘 받은 질문 */
+    .today {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 22px;
+      margin-bottom: 12px;
+      text-decoration: none;
+      transition: border-color 0.2s;
+    }
+
+    .today:hover { border-color: var(--primary); }
+
+    .today-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .today-title {
+      margin-top: 4px;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-main);
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    .today-go {
+      flex-shrink: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* 학습 현황 */
+    .stats-card {
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: var(--bg-subtle);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    .stat:hover { border-color: var(--border-color); }
+
+    .stat[aria-pressed="true"] {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    .stat-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .stat-count {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--border-color);
+    }
+
+    .dot-review { background: var(--review-bar); }
+    .dot-done { background: var(--primary); }
+
+    .progress {
+      display: flex;
+      height: 6px;
+      margin-top: 14px;
+      border-radius: 3px;
+      overflow: hidden;
+      background: var(--bg-subtle);
+    }
+
+    .progress span { transition: width 0.3s; }
+    .progress-done { background: var(--primary); }
+    .progress-review { background: var(--review-bar); }
+
+    .progress-text {
+      margin: 8px 0 0;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* 검색 & 필터 */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .search {
+      position: relative;
+      flex: 1;
+    }
+
+    .search svg {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search input,
+    .toolbar select {
+      width: 100%;
+      height: 46px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-main);
+      font: inherit;
+      font-size: 15px;
+      transition: border-color 0.2s;
+    }
+
+    .search input {
+      padding: 0 44px 0 42px;
+    }
+
+    .search input::placeholder { color: var(--text-muted); }
+
+    .search input:focus,
+    .toolbar select:focus,
+    .memo-editor textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .search-kbd {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      min-width: 22px;
+      padding: 1px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      font-family: inherit;
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .search input:focus + .search-kbd,
+    .search input:not(:placeholder-shown) + .search-kbd { display: none; }
+
+    .toolbar select {
+      width: auto;
+      max-width: 240px;
+      padding: 0 12px;
+      cursor: pointer;
+    }
+
+    .toolbar-filters {
+      display: flex;
+      gap: 8px;
+    }
+
+    .star-filter {
+      height: 46px;
+      border-radius: 12px;
+    }
+
+    .star-filter svg { color: var(--text-muted); }
+
+    .star-filter[aria-pressed="true"] {
+      border-color: var(--star);
+      color: var(--text-main);
+    }
+
+    .star-filter[aria-pressed="true"] svg {
+      color: var(--star);
+      fill: currentColor;
+    }
+
+    .star-count { font-variant-numeric: tabular-nums; }
+
+    .list-head {
+      margin: 0 4px 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* 질문 목록 */
+    .list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .q-row {
+      padding: 16px 20px;
+    }
+
+    /* 필터로 숨긴 행이 있어도 보이는 행 사이에만 구분선을 긋는다 */
+    .q-row:not([hidden]) ~ .q-row { border-top: 1px solid var(--border-color); }
+
+    .q-main {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px 12px;
+    }
+
+    .star-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      margin-left: -6px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-muted);
+      opacity: 0.55;
+      cursor: pointer;
+      transition: color 0.15s, background-color 0.15s, opacity 0.15s;
+    }
+
+    .star-btn:hover {
+      background: var(--bg-subtle);
+      opacity: 1;
+    }
+
+    .star-btn[aria-pressed="true"] { opacity: 1; }
+
+    .star-btn[aria-pressed="true"] { color: var(--star); }
+    .star-btn[aria-pressed="true"] svg { fill: currentColor; }
+
+    .q-num {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .q-row[data-state="review"] .q-num .dot { background: var(--review-bar); }
+    .q-row[data-state="done"] .q-num .dot { background: var(--primary); }
+
+    .q-title {
+      display: block;
+      margin-top: 2px;
+      font-size: 15.5px;
+      font-weight: 600;
+      color: var(--text-main);
+      text-decoration: none;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    .q-title:hover { color: var(--primary); }
+
+    .q-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .q-cat { flex-shrink: 0; }
+
+    .q-memo-preview {
+      min-width: 0;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .q-memo-preview::before {
+      content: "·";
+      margin-right: 8px;
+      color: var(--text-muted);
+    }
+
+    .q-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .level-seg {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: 10px;
+      background: var(--bg-subtle);
+    }
+
+    .level-seg button {
+      height: 28px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-muted);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    .level-seg button:hover { color: var(--text-main); }
+
+    .level-seg button[data-level="new"][aria-pressed="true"] {
+      background: var(--bg-card);
+      color: var(--text-main);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .level-seg button[data-level="review"][aria-pressed="true"] {
+      background: var(--review-light);
+      color: var(--review);
+    }
+
+    .level-seg button[data-level="done"][aria-pressed="true"] {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .memo-btn.has-memo {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .memo-btn[aria-expanded="true"] {
+      background: var(--bg-subtle);
+    }
+
+    /* 메모 편집기 */
+    .memo-editor {
+      margin-top: 14px;
+    }
+
+    .memo-editor textarea {
+      display: block;
+      width: 100%;
+      min-height: 120px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-body);
+      color: var(--text-main);
+      font: inherit;
+      font-size: 15px;
+      line-height: 1.65;
+      resize: vertical;
+      transition: border-color 0.2s;
+    }
+
+    .memo-editor textarea::placeholder { color: var(--text-muted); }
+
+    .memo-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    .memo-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+    }
+
+    .memo-count { font-variant-numeric: tabular-nums; }
+    .memo-github.is-error { color: var(--danger); }
+
+    .memo-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .empty {
+      margin: 0;
+      padding: 48px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
 
     /* 스켈레톤 UI */
     .skeleton {
@@ -143,450 +867,1483 @@
       100% { background-position: -200% 0; }
     }
 
-    .skeleton-badge {
-      width: 96px;
-      height: 25px;
-      display: inline-block;
-      margin-bottom: 12px;
-    }
-
-    .skeleton-title {
-      width: 75%;
-      height: 32px;
-      border-radius: 8px;
-    }
-
     .skeleton-line {
-      height: 16px;
-      margin-bottom: 12px;
+      height: 14px;
+      margin: 6px 0;
     }
 
-    * { box-sizing: border-box; }
-    
-    body {
-      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-      line-height: 1.75;
-      letter-spacing: -0.02em;
-      color: var(--text-sub);
-      background-color: var(--bg-body);
-      margin: 0;
-      padding: 40px 20px;
-      transition: background-color 0.2s;
-    }
-
-    .container {
-      max-width: 768px;
-      margin: 0 auto;
-      background: var(--bg-card);
-      padding: 44px 48px;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
-      border: 1px solid var(--border-color);
-      transition: background-color 0.2s, border-color 0.2s;
-    }
-
-    .badge {
-      display: inline-block;
-      background: var(--primary-light);
-      color: var(--primary);
-      font-size: 13px;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 6px;
-      margin-bottom: 12px;
-    }
-
-    h1#question-title {
-      font-size: 26px;
-      font-weight: 700;
-      color: var(--text-main);
-      margin: 0 0 24px 0;
-      line-height: 1.45;
-      word-break: keep-all;
-      overflow-wrap: break-word;
-    }
-
-    hr {
-      border: 0;
-      border-top: 1px solid var(--border-color);
-      margin: 28px 0;
-    }
-
-    #content {
-      font-size: 16px;
-      color: var(--text-sub);
-      word-break: keep-all;
-      overflow-wrap: break-word;
-    }
-
-    #content h2 {
-      font-size: 21px;
-      font-weight: 700;
-      margin-top: 40px;
-      margin-bottom: 14px;
-      color: var(--text-main);
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 8px;
-    }
-
-    #content h3 {
-      font-size: 18px;
-      font-weight: 700;
-      margin-top: 28px;
-      margin-bottom: 10px;
-      color: var(--text-main);
-    }
-
-    #content h4 {
-      font-size: 16px;
-      font-weight: 600;
-      margin-top: 22px;
-      margin-bottom: 8px;
-      color: var(--text-main);
-    }
-
-    #content p { margin: 16px 0; }
-    #content strong { font-weight: 700; color: var(--text-main); }
-    #content ul, #content ol { padding-left: 24px; margin: 16px 0; }
-    #content li { margin-bottom: 6px; }
-    #content li > p { margin: 6px 0; }
-
-    #content blockquote {
-      margin: 20px 0;
-      padding: 12px 20px;
-      border-left: 4px solid var(--primary);
-      background: var(--bg-body);
-      color: var(--text-sub);
-      border-radius: 0 8px 8px 0;
-    }
-
-    #content table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 24px 0;
-      font-size: 15px;
-    }
-
-    #content th, #content td {
-      border: 1px solid var(--border-color);
-      padding: 10px 14px;
-      text-align: left;
-    }
-
-    #content th {
-      background: var(--table-header-bg);
-      font-weight: 600;
-      color: var(--text-main);
-    }
-
-    /* 인라인 코드 */
-    #content code:not(pre code) {
-      background: var(--code-inline-bg);
-      color: var(--code-inline-color);
-      padding: 2px 6px;
-      border-radius: 4px;
+    /* 토스트 */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 10;
+      max-width: calc(100% - 32px);
+      padding: 12px 18px;
+      border-radius: 12px;
+      background: var(--text-main);
+      color: var(--bg-card);
       font-size: 14px;
       font-weight: 600;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      opacity: 0;
+      transform: translate(-50%, 8px);
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
     }
 
-    /* =========================================
-       코드 블록 & 구문 하이라이팅 (개선 영역)
-       ========================================= */
-    .code-wrapper {
-      position: relative;
-      margin: 24px 0;
+    .toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
 
-    #content pre {
-      background-color: var(--code-block-bg);
-      border: 1px solid var(--code-block-border);
-      border-radius: 10px;
-      padding: 18px 20px;
-      overflow-x: auto;
-      margin: 0;
-      color: var(--code-block-text);
-      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 14px;
-      line-height: 1.65;
-      tab-size: 2;
-      transition: background-color 0.2s, border-color 0.2s;
-    }
-
-    #content pre code {
-      font-family: inherit;
-      color: inherit;
-    }
-
-    /* 스크롤바 미세 조정 */
-    #content pre::-webkit-scrollbar {
-      height: 6px;
-    }
-    #content pre::-webkit-scrollbar-thumb {
-      background: var(--border-color);
-      border-radius: 3px;
-    }
-
-    /* Prism.js 구문 토큰 색상 정의 */
-    .token.comment,
-    .token.prolog,
-    .token.doctype,
-    .token.cdata {
-      color: var(--syntax-comment);
-      font-style: italic;
-    }
-
-    .token.punctuation {
-      color: var(--syntax-punctuation);
-    }
-
-    .token.property,
-    .token.tag,
-    .token.boolean,
-    .token.constant,
-    .token.symbol,
-    .token.deleted {
-      color: var(--syntax-tag);
-    }
-
-    .token.number {
-      color: var(--syntax-number);
-    }
-
-    .token.selector,
-    .token.attr-name,
-    .token.string,
-    .token.char,
-    .token.builtin,
-    .token.inserted {
-      color: var(--syntax-string);
-    }
-
-    .token.operator,
-    .token.entity,
-    .token.url {
-      color: var(--syntax-operator);
-    }
-
-    .token.atrule,
-    .token.attr-value,
-    .token.keyword {
-      color: var(--syntax-keyword);
-      font-weight: 600;
-    }
-
-    .token.function,
-    .token.class-name {
-      color: var(--syntax-function);
-    }
-
-    .token.regex,
-    .token.important,
-    .token.variable {
-      color: var(--syntax-variable);
-    }
-
-    /* 코드 복사 버튼 */
-    .code-copy-btn {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: var(--code-btn-bg);
-      border: 1px solid var(--code-btn-border);
-      color: var(--code-btn-text);
-      font-size: 12px;
-      font-weight: 500;
-      font-family: inherit;
-      padding: 5px 10px;
-      border-radius: 6px;
-      cursor: pointer;
-      backdrop-filter: blur(4px);
-      transition: all 0.2s ease;
-      user-select: none;
-    }
-
-    .code-copy-btn:hover {
-      background: var(--code-btn-hover-bg);
-      color: var(--code-btn-hover-text);
-    }
-
-    .code-copy-btn.copied {
-      background: var(--primary);
-      border-color: var(--primary);
+    .toast[data-tone="error"] {
+      background: var(--danger);
       color: #ffffff;
     }
 
-    #content a {
-      color: var(--primary);
-      text-decoration: none;
-    }
-
-    #content a:hover {
-      text-decoration: underline;
+    @media (hover: none) {
+      .search-kbd { display: none; }
     }
 
     @media (max-width: 640px) {
-      body {
-        padding: 0;
-        background-color: var(--bg-card);
-      }
+      body { padding: 24px 16px 64px; }
 
-      .container {
-        padding: 24px 20px;
-        border: none;
-        border-radius: 0;
-        box-shadow: none;
-      }
+      .brand h1 { font-size: 22px; }
+      .brand p { font-size: 13px; }
 
-      h1#question-title {
-        font-size: 22px;
-        margin-bottom: 18px;
-      }
+      .account-name { display: none; }
 
-      #content { font-size: 15.5px; }
-      #content h2 { font-size: 19px; }
-      #content h3 { font-size: 17px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat-count { font-size: 20px; }
 
-      #content table {
-        display: block;
-        overflow-x: auto;
-        white-space: nowrap;
-      }
+      .toolbar { flex-direction: column; }
+      .toolbar select { flex: 1; min-width: 0; max-width: none; }
+
+      .q-row { padding: 16px; }
+      .q-main { grid-template-columns: auto minmax(0, 1fr); }
+      .q-actions { grid-column: 1 / -1; justify-content: space-between; }
+
+      .today { padding: 16px 18px; }
+      .today-title { font-size: 16px; }
+      .today-go { display: none; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header-bar">
-      <div>
-        <div class="badge" id="question-badge" style="display: none;"></div>
-        <div class="skeleton skeleton-badge" id="badge-skeleton"></div>
+    <header class="site-header">
+      <div class="brand">
+        <h1>매일메일</h1>
+        <p>면접 질문을 학습하고, 내 언어로 정리해요</p>
       </div>
-      <button id="theme-toggle" class="theme-toggle-btn" aria-label="테마 전환" type="button">
-        <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      <div class="header-actions">
+        <div id="account" class="account"></div>
+        <button id="theme-toggle" class="btn icon-btn" aria-label="테마 전환" type="button">
+          <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <p id="sync-status" class="sync-status">
+      <span class="sync-dot"></span>
+      <span id="sync-text">불러오는 중…</span>
+      <span id="save-state" class="save-state" aria-live="polite"></span>
+    </p>
+
+    <section id="repo-card" class="card repo-card" aria-label="메모 저장소" hidden>
+      <span class="repo-card-icon" aria-hidden="true"></span>
+      <div class="repo-card-body">
+        <div class="repo-card-label">메모 저장소</div>
+        <div id="repo-card-value" class="repo-card-value"></div>
+      </div>
+      <button type="button" id="repo-open" class="btn btn-sm">저장소 선택</button>
+    </section>
+
+    <a id="today" class="card today q-link" hidden>
+      <div>
+        <div class="today-label">오늘 받은 질문 · #<span id="today-num"></span></div>
+        <div id="today-title" class="today-title"></div>
+      </div>
+      <span class="today-go">읽기 →</span>
+    </a>
+
+    <section class="card stats-card" aria-label="학습 현황">
+      <div id="stats" class="stats">
+        <button type="button" class="stat" data-filter="all" aria-pressed="true">
+          <span class="stat-label">전체</span>
+          <span class="stat-count" data-count="all">-</span>
+        </button>
+        <button type="button" class="stat" data-filter="new" aria-pressed="false">
+          <span class="stat-label"><span class="dot"></span>미학습</span>
+          <span class="stat-count" data-count="new">-</span>
+        </button>
+        <button type="button" class="stat" data-filter="review" aria-pressed="false">
+          <span class="stat-label"><span class="dot dot-review"></span>복습 필요</span>
+          <span class="stat-count" data-count="review">-</span>
+        </button>
+        <button type="button" class="stat" data-filter="done" aria-pressed="false">
+          <span class="stat-label"><span class="dot dot-done"></span>완벽 이해</span>
+          <span class="stat-count" data-count="done">-</span>
+        </button>
+      </div>
+      <div class="progress" aria-hidden="true">
+        <span id="progress-done" class="progress-done" style="width: 0"></span>
+        <span id="progress-review" class="progress-review" style="width: 0"></span>
+      </div>
+      <p id="progress-text" class="progress-text">&nbsp;</p>
+    </section>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="5"></circle>
-          <line x1="12" y1="1" x2="12" y2="3"></line>
-          <line x1="12" y1="21" x2="12" y2="23"></line>
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-          <line x1="1" y1="12" x2="3" y2="12"></line>
-          <line x1="21" y1="12" x2="23" y2="12"></line>
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        <input id="search" type="search" placeholder="질문, 키워드, 내 메모 검색" autocomplete="off" aria-label="질문 검색" />
+        <kbd class="search-kbd">/</kbd>
+      </label>
+      <div class="toolbar-filters">
+        <select id="category" aria-label="카테고리">
+          <option value="">모든 카테고리</option>
+        </select>
+        <button type="button" id="star-filter" class="btn star-filter" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          별표 <span id="star-count" class="star-count">0</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="result-count" class="list-head">&nbsp;</div>
+    <ul id="list" class="card list"></ul>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="repo-dialog" class="repo-dialog" aria-labelledby="repo-dialog-title">
+    <div class="dialog-head">
+      <div>
+        <h2 id="repo-dialog-title">메모 저장소 선택</h2>
+        <p>메모를 커밋할 저장소를 골라주세요. GitHub 앱에 추가한 저장소만 보여요.</p>
+      </div>
+      <button type="button" class="btn icon-btn" data-action="repo-close" aria-label="닫기">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
     </div>
-
-    <h1 id="question-title"><div class="skeleton skeleton-title"></div></h1>
-    <hr />
-    <div id="content">
-      <div class="skeleton skeleton-line" style="width: 90%;"></div>
-      <div class="skeleton skeleton-line" style="width: 100%;"></div>
-      <div class="skeleton skeleton-line" style="width: 78%;"></div>
-      <div class="skeleton skeleton-line" style="width: 45%; margin-top: 24px;"></div>
-      <div class="skeleton skeleton-line" style="width: 95%;"></div>
-      <div class="skeleton skeleton-line" style="width: 82%;"></div>
+    <label class="search dialog-search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input id="repo-search" type="search" placeholder="저장소 이름 검색" autocomplete="off" aria-label="저장소 검색" />
+    </label>
+    <div id="repo-body" class="repo-body"></div>
+    <div class="dialog-foot">
+      <div class="dialog-links">
+        <a id="repo-install-link">저장소 추가·변경</a>
+        <a href="https://github.com/new?name=maeil-mail-memo" target="_blank" rel="noopener">새 저장소 만들기 ↗</a>
+      </div>
+      <button type="button" class="btn btn-sm" data-action="repo-refresh">새로고침</button>
     </div>
-  </div>
+  </dialog>
 
-  <script>
-    async function loadContent() {
-      const params = new URLSearchParams(window.location.search);
-      let q = params.get('q') || 'fe-1';
-      if (!q.startsWith('fe-')) q = 'fe-' + q;
+  <template id="row-template">
+    <li class="q-row" data-state="new">
+      <div class="q-main">
+        <button type="button" class="star-btn" data-action="star" aria-pressed="false" aria-label="별표">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </button>
+        <div>
+          <div class="q-num"><span class="dot"></span><span class="q-id"></span></div>
+          <a class="q-title q-link"></a>
+          <div class="q-meta">
+            <span class="q-cat"></span>
+            <span class="q-memo-preview" hidden></span>
+          </div>
+        </div>
+        <div class="q-actions">
+          <div class="level-seg" role="group" aria-label="학습 수준">
+            <button type="button" data-level="new" aria-pressed="true">미학습</button>
+            <button type="button" data-level="review" aria-pressed="false">복습 필요</button>
+            <button type="button" data-level="done" aria-pressed="false">완벽 이해</button>
+          </div>
+          <button type="button" class="btn btn-sm memo-btn" data-action="memo" aria-expanded="false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            메모
+          </button>
+        </div>
+      </div>
+    </li>
+  </template>
 
-      try {
-        const [tocRes, contentRes] = await Promise.all([
-          fetch('frontend/toc.md'),
-          fetch(`frontend/contents/${q}.md`)
-        ]);
+  <template id="editor-template">
+    <div class="memo-editor">
+      <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
+      <div class="memo-footer">
+        <div class="memo-info">
+          <span class="memo-count"></span>
+          <span class="memo-saved"></span>
+          <span class="memo-github"></span>
+        </div>
+        <div class="memo-buttons">
+          <button type="button" class="btn btn-sm" data-action="memo-close">닫기</button>
+          <button type="button" class="btn btn-sm btn-primary" data-action="memo-save">저장</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
-        if (!contentRes.ok) throw new Error("답변 파일을 찾을 수 없습니다.");
+  <script type="module">
+    import { firebaseConfig } from './firebase-config.js';
 
-        const tocText = await tocRes.text();
-        const contentMd = await contentRes.text();
+    const FIREBASE_VERSION = '10.14.1';
+    const MEMO_MAX = 1000;
+    const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
+    const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
+    const RETRY_MAX = 10 * 60 * 1000;
+    const CACHE_TTL = 10 * 60 * 1000; // 질문을 보고 돌아올 때 Firestore를 다시 읽지 않도록 세션 캐시
+    const STALE_AFTER = 5 * 60 * 1000; // 이만큼 자리를 비웠다 돌아오면 다른 기기의 변경을 보려고 다시 읽는다
+    // 새로고침은 최신 상태를 보려는 것이므로 세션 캐시를 건너뛴다
+    const PAGE_RELOADED = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+    const LOCAL_KEY = 'maeil-study-v1';
+    // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
+    const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
+    const GITHUB_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>';
 
-        const regex = new RegExp(`-\\s*\\[(.*?)\\]\\(contents/${q}\\.md\\)`);
-        const match = tocText.match(regex);
-        const questionTitle = match ? match[1] : q;
+    const els = {
+      account: document.getElementById('account'),
+      syncStatus: document.getElementById('sync-status'),
+      syncText: document.getElementById('sync-text'),
+      saveState: document.getElementById('save-state'),
+      repoCard: document.getElementById('repo-card'),
+      repoCardValue: document.getElementById('repo-card-value'),
+      repoOpen: document.getElementById('repo-open'),
+      repoDialog: document.getElementById('repo-dialog'),
+      repoSearch: document.getElementById('repo-search'),
+      repoBody: document.getElementById('repo-body'),
+      today: document.getElementById('today'),
+      todayNum: document.getElementById('today-num'),
+      todayTitle: document.getElementById('today-title'),
+      stats: document.getElementById('stats'),
+      progressDone: document.getElementById('progress-done'),
+      progressReview: document.getElementById('progress-review'),
+      progressText: document.getElementById('progress-text'),
+      search: document.getElementById('search'),
+      category: document.getElementById('category'),
+      starFilter: document.getElementById('star-filter'),
+      starCount: document.getElementById('star-count'),
+      resultCount: document.getElementById('result-count'),
+      list: document.getElementById('list'),
+      toast: document.getElementById('toast'),
+      rowTemplate: document.getElementById('row-template'),
+      editorTemplate: document.getElementById('editor-template'),
+    };
 
-        document.getElementById('badge-skeleton').style.display = 'none';
-        const badgeEl = document.getElementById('question-badge');
-        badgeEl.style.display = 'inline-block';
-        badgeEl.innerText = q.toUpperCase();
+    let data = { questions: [], categories: [], today: null };
+    let fb = null;
+    let currentUser = null;
+    let accountMode = 'unconfigured';
+    let repoCache = null;
+    const rows = new Map();
+    const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
+    const filter = { level: 'all', category: '', text: '', starred: false };
 
-        document.getElementById('question-title').innerText = questionTitle;
-        document.title = `${questionTitle} - 매일메일`;
+    // ---------- 브라우저 저장소 (사생활 보호 모드 등에서 실패해도 동작하도록) ----------
 
-        document.getElementById('content').innerHTML = marked.parse(contentMd);
-        Prism.highlightAll();
-        addCopyButtons();
-      } catch (err) {
-        document.getElementById('badge-skeleton').style.display = 'none';
-        document.getElementById('question-title').innerText = "오류가 발생했습니다";
-        document.getElementById('content').innerHTML = `<p style="color: red;">${err.message}</p>`;
+    function readStore(type, key) {
+      try { return JSON.parse(window[type].getItem(key)); } catch { return null; }
+    }
+
+    function writeStore(type, key, value) {
+      try { window[type].setItem(key, JSON.stringify(value)); } catch { /* 저장소를 쓸 수 없는 환경 */ }
+    }
+
+    function removeStore(type, key) {
+      try { window[type].removeItem(key); } catch { /* 저장소를 쓸 수 없는 환경 */ }
+    }
+
+    // ---------- 학습 기록 저장 ----------
+    // items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000 } }
+    // memoRepo: { id, fullName: "owner/name" } (GitHub 로그인 사용자만)
+    // 미학습은 level이 없고, 별표가 없으면 starred가 없다. patch의 null은 해당 필드를 지운다는 뜻이다.
+
+    function applyPatch(items, patch) {
+      for (const [id, fields] of Object.entries(patch)) {
+        const item = { ...items[id] };
+        for (const [key, value] of Object.entries(fields)) {
+          if (value === null) delete item[key];
+          else item[key] = value;
+        }
+        if (Object.keys(item).length) items[id] = item;
+        else delete items[id];
       }
     }
 
-    function addCopyButtons() {
-      document.querySelectorAll('#content pre').forEach((pre) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'code-wrapper';
-        pre.parentNode.insertBefore(wrapper, pre);
-        wrapper.appendChild(pre);
+    const localBackend = {
+      async load() {
+        return { items: readStore('localStorage', LOCAL_KEY) || {}, memoRepo: null };
+      },
+      async write(patch) {
+        const items = readStore('localStorage', LOCAL_KEY) || {};
+        applyPatch(items, patch);
+        writeStore('localStorage', LOCAL_KEY, items);
+      },
+      clear() {
+        removeStore('localStorage', LOCAL_KEY);
+      },
+    };
 
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'code-copy-btn';
-        copyBtn.type = 'button';
-        copyBtn.innerText = '복사';
+    // Firestore: 사용자당 문서 1개(users/{uid}) → 접속 시 읽기 1회, 변경은 필드 단위 merge 쓰기
+    function createFirestoreBackend(uid) {
+      const ref = fb.fs.doc(fb.db, 'users', uid);
+      const cacheKey = `maeil-cache-${uid}`;
+      const snapshotKey = `maeil-snapshot-${uid}`; // 불러오기에 실패했을 때 보여줄 마지막 기록
+      const pendingKey = `maeil-pending-${uid}`; // 아직 쓰지 못한 변경 (새로고침해도 남아 다음 접속 때 보낸다)
+      const remember = (snapshot) => {
+        writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
+        writeStore('localStorage', snapshotKey, snapshot);
+      };
 
-        copyBtn.addEventListener('click', async () => {
-          try {
-            const code = pre.querySelector('code')?.innerText || pre.innerText;
-            await navigator.clipboard.writeText(code);
-            copyBtn.innerText = '복사됨!';
-            copyBtn.classList.add('copied');
-
-            setTimeout(() => {
-              copyBtn.innerText = '복사';
-              copyBtn.classList.remove('copied');
-            }, 2000);
-          } catch (err) {
-            copyBtn.innerText = '실패';
+      return {
+        async load({ fresh = false } = {}) {
+          const cached = readStore('sessionStorage', cacheKey);
+          if (!fresh && !PAGE_RELOADED && cached && Date.now() - cached.at < CACHE_TTL) {
+            return { items: cached.items, memoRepo: cached.memoRepo || null };
           }
-        });
 
-        wrapper.appendChild(copyBtn);
+          const snap = await fb.fs.getDoc(ref);
+          const doc = snap.exists() ? snap.data() : {};
+          const items = {};
+          for (const [id, item] of Object.entries(doc.items || {})) {
+            if (Object.keys(item).length) items[id] = item;
+          }
+          const loaded = { items, memoRepo: doc.memoRepo || null };
+          remember(loaded);
+          return loaded;
+        },
+        async write(patch, snapshot) {
+          const changes = {};
+          for (const [id, fields] of Object.entries(patch)) {
+            changes[id] = {};
+            for (const [key, value] of Object.entries(fields)) {
+              changes[id][key] = value === null ? fb.fs.deleteField() : value;
+            }
+          }
+          await fb.fs.setDoc(ref, { items: changes }, { merge: true });
+          remember(snapshot);
+        },
+        async saveMemoRepo(repo, snapshot) {
+          await fb.fs.setDoc(ref, { memoRepo: repo }, { mergeFields: ['memoRepo'] });
+          remember(snapshot);
+        },
+        loadSnapshot() {
+          return readStore('localStorage', snapshotKey) || { items: {}, memoRepo: null };
+        },
+        loadPending() {
+          return readStore('localStorage', pendingKey) || {};
+        },
+        savePending(pending) {
+          if (Object.keys(pending).length) writeStore('localStorage', pendingKey, pending);
+          else removeStore('localStorage', pendingKey);
+        },
+        // 로그아웃할 때 기록 사본을 지운다. 쓰지 못한 변경(pending)은 다음 로그인 때 보내려고 남긴다.
+        forget() {
+          removeStore('sessionStorage', cacheKey);
+          removeStore('localStorage', snapshotKey);
+        },
+      };
+    }
+
+    const store = {
+      backend: localBackend,
+      items: {},
+      memoRepo: null,
+      pending: {},
+      saving: null,
+      timer: 0,
+      loadedAt: 0,
+
+      item(id) {
+        return this.items[id] || {};
+      },
+
+      level(id) {
+        return this.item(id).level || 'new';
+      },
+
+      async use(backend) {
+        clearTimeout(this.timer);
+        this.backend = backend;
+        this.setLoaded(await backend.load());
+      },
+
+      // 불러오기에 실패했을 때: 마지막으로 확인한 기록을 보여주고, 변경은 모아 두었다가 나중에 쓴다
+      useOffline(backend) {
+        clearTimeout(this.timer);
+        this.backend = backend;
+        this.setLoaded(backend.loadSnapshot());
+        this.loadedAt = 0; // 탭으로 돌아오면 바로 다시 불러온다
+      },
+
+      // 저장 중인 쓰기가 없을 때만 부른다
+      async refresh() {
+        this.setLoaded(await this.backend.load({ fresh: true }));
+      },
+
+      // 아직 쓰지 못한 변경은 이 기기에서 더 나중에 바꾼 것이므로 불러온 기록 위에 덮는다
+      setLoaded({ items, memoRepo }) {
+        this.pending = this.backend.loadPending?.() || {};
+        applyPatch(items, this.pending);
+        this.items = items;
+        this.memoRepo = memoRepo;
+        this.loadedAt = Date.now();
+      },
+
+      async setMemoRepo(repo) {
+        await this.backend.saveMemoRepo(repo, { items: this.items, memoRepo: repo });
+        this.memoRepo = repo;
+      },
+
+      update(id, fields) {
+        applyPatch(this.items, { [id]: fields });
+        this.pending[id] = { ...this.pending[id], ...fields };
+        this.backend.savePending?.(this.pending);
+      },
+
+      async flush() {
+        clearTimeout(this.timer);
+        while (this.saving) await this.saving;
+
+        const patch = this.pending;
+        if (!Object.keys(patch).length) return;
+        this.pending = {};
+
+        const writing = this.backend.write(patch, { items: this.items, memoRepo: this.memoRepo });
+        this.saving = writing.catch(() => {}).finally(() => { this.saving = null; });
+        try {
+          await writing;
+        } catch (err) {
+          // 실패한 변경은 대기열로 되돌린다. 그사이 생긴 더 새로운 변경이 우선한다.
+          for (const [id, fields] of Object.entries(patch)) {
+            this.pending[id] = { ...fields, ...this.pending[id] };
+          }
+          throw err;
+        } finally {
+          this.backend.savePending?.(this.pending);
+        }
+      },
+
+      get busy() {
+        return this.saving !== null || Object.keys(this.pending).length > 0;
+      },
+    };
+
+    let saveErrorShown = false;
+
+    let retryDelay = RETRY_BASE;
+
+    function renderSaveState(state) {
+      els.saveState.dataset.state = state;
+      els.saveState.textContent = {
+        pending: '저장 중…',
+        saved: '저장됨',
+        failed: '저장 실패 · 이 기기에 보관하고 다시 시도하는 중',
+        held: '저장 거부됨 · 이 기기에 보관 중',
+      }[state] || '';
+    }
+
+    // 다시 보내도 소용없는 오류(규칙 거부, 문서 크기 초과 등)는 자동 재시도를 멈추고 다음 접속 때 다시 보낸다
+    const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
+
+    function saveErrorMessage(err) {
+      if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
+      if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
+      return '저장하지 못했어요. 바꾼 내용은 이 기기에 보관했다가 연결되면 저장할게요.';
+    }
+
+    // 실패한 저장을 알리고, 일시적인 오류면 간격을 늘려 가며 다시 시도한다
+    function handleSaveError(err) {
+      console.error(err);
+      if (!saveErrorShown) toast(saveErrorMessage(err), 'error', 5000);
+      saveErrorShown = true;
+      if (isPermanentError(err)) {
+        renderSaveState('held');
+        return;
+      }
+      renderSaveState('failed');
+      clearTimeout(store.timer);
+      store.timer = setTimeout(flushInBackground, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
+    }
+
+    function flushInBackground() {
+      store.flush()
+        .then(() => {
+          saveErrorShown = false;
+          retryDelay = RETRY_BASE;
+          renderSaveState(store.busy ? 'pending' : 'saved');
+          if (accountMode === 'error') refreshIfStale(); // 쓰기가 됐으니 기록도 다시 불러와 본다
+        })
+        .catch(handleSaveError);
+    }
+
+    function saveSoon() {
+      // 거부된 계정은 보내 봐야 거부되니 요청하지 않는다 (변경은 이 기기에 보관돼 있다)
+      if (accountMode === 'denied') {
+        renderSaveState('held');
+        return;
+      }
+      renderSaveState('pending');
+      clearTimeout(store.timer);
+      // 이 브라우저에만 저장할 때는 비용이 없으니 바로 쓴다
+      if (store.backend === localBackend) flushInBackground();
+      else store.timer = setTimeout(flushInBackground, LEVEL_SAVE_DELAY);
+    }
+
+    // ---------- Firebase ----------
+
+    async function loadFirebase() {
+      const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
+      const [app, auth, fs] = await Promise.all([
+        import(`${base}/firebase-app.js`),
+        import(`${base}/firebase-auth.js`),
+        import(`${base}/firebase-firestore-lite.js`),
+      ]);
+      const instance = app.initializeApp(firebaseConfig);
+      return { auth, fs, authInstance: auth.getAuth(instance), db: fs.getFirestore(instance) };
+    }
+
+    async function initData() {
+      if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+        await store.use(localBackend);
+        renderAccount({ mode: 'unconfigured' });
+        return;
+      }
+
+      try {
+        fb = await loadFirebase();
+      } catch (err) {
+        console.error(err);
+        await store.use(localBackend);
+        renderAccount({ mode: 'unavailable' });
+        return;
+      }
+
+      await new Promise((resolve) => {
+        fb.auth.onAuthStateChanged(fb.authInstance, async (user) => {
+          await switchUser(user);
+          resolve();
+        });
       });
+    }
+
+    async function switchUser(user) {
+      await store.flush().catch(() => {});
+      store.backend.forget?.();
+      currentUser = user;
+      repoCache = null;
+
+      if (!user) {
+        await store.use(localBackend);
+        renderAccount({ mode: 'guest' });
+      } else {
+        const backend = createFirestoreBackend(user.uid);
+        try {
+          await store.use(backend);
+          await moveLocalItems();
+          renderAccount({ mode: 'user', user });
+        } catch (err) {
+          console.error(err);
+          store.useOffline(backend);
+          // 규칙에서 거부됨(소유자 계정이 아님): 동기화하지 않고 이 기기에만 보관한다
+          renderAccount({ mode: err?.code === 'permission-denied' ? 'denied' : 'error', user });
+        }
+        // 지난 접속에서 쓰지 못한 변경이 남아 있으면 보낸다
+        if (store.busy && accountMode !== 'denied') flushInBackground();
+      }
+
+      if (rows.size) renderAll();
+    }
+
+    // 로그인 전에 이 브라우저에 쌓인 기록을 계정으로 옮긴다 (계정에 이미 있는 필드는 계정 쪽을 유지)
+    async function moveLocalItems() {
+      const { items: local } = await localBackend.load();
+      const moved = [];
+      for (const [id, item] of Object.entries(local)) {
+        const remote = store.items[id] || {};
+        const fields = Object.fromEntries(Object.entries(item).filter(([key]) => !(key in remote)));
+        if (Object.keys(fields).length) moved.push([id, fields]);
+      }
+      if (moved.length) {
+        for (const [id, fields] of moved) store.update(id, fields);
+        await store.flush();
+        toast(`이 브라우저에 있던 기록 ${moved.length}개를 계정으로 옮겼어요.`);
+      }
+      localBackend.clear();
+    }
+
+    async function login() {
+      try {
+        rememberGithubToken(await fb.auth.signInWithPopup(fb.authInstance, new fb.auth.GithubAuthProvider()));
+      } catch (err) {
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
+        console.error(err);
+        const hint = err.code === 'auth/unauthorized-domain'
+          ? 'Firebase 승인 도메인에 이 주소를 추가해주세요.'
+          : (err.code || '');
+        toast(`로그인하지 못했어요. ${hint}`, 'error');
+      }
+    }
+
+    async function logout() {
+      if (hasDirtyEditor() && !confirm('저장하지 않은 메모가 있어요. 로그아웃할까요?')) return;
+      await store.flush().catch(() => {});
+      removeStore('localStorage', githubTokenKey(currentUser.uid));
+      await fb.auth.signOut(fb.authInstance);
+    }
+
+    // ---------- GitHub ----------
+
+    const githubTokenKey = (uid) => `maeil-github-token-${uid}`;
+
+    // Firebase는 GitHub 토큰을 로그인하는 순간에만 넘겨주므로 이 기기에 보관해 둔다
+    function rememberGithubToken(result) {
+      const token = fb.auth.GithubAuthProvider.credentialFromResult(result)?.accessToken || null;
+      if (token) writeStore('localStorage', githubTokenKey(result.user.uid), token);
+      return token;
+    }
+
+    // 이미 승인한 계정이면 GitHub 동의 화면 없이 바로 돌아온다
+    async function connectGithub() {
+      const result = await fb.auth.reauthenticateWithPopup(fb.authInstance.currentUser, new fb.auth.GithubAuthProvider());
+      return rememberGithubToken(result);
+    }
+
+    function getGithubToken() {
+      const token = readStore('localStorage', githubTokenKey(currentUser.uid));
+      return token ? Promise.resolve(token) : connectGithub();
+    }
+
+    async function githubApi(token, path, { method = 'GET', body } = {}) {
+      const res = await fetch(`https://api.github.com${path}`, {
+        method,
+        cache: 'no-store', // 커밋 직후 다시 읽을 때 오래된 sha를 받지 않도록
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${token}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(body && { 'Content-Type': 'application/json' }),
+        },
+        body: body && JSON.stringify(body),
+      });
+      if (res.status === 401) {
+        removeStore('localStorage', githubTokenKey(currentUser.uid));
+        throw Object.assign(new Error('GitHub 토큰이 만료됐어요.'), { code: 'github/unauthorized' });
+      }
+      if (!res.ok) {
+        const { message } = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(message || `GitHub API ${res.status}`), { status: res.status });
+      }
+      return res.json();
+    }
+
+    function toBase64(text) {
+      let binary = '';
+      for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    }
+
+    // 메모를 선택한 저장소의 기본 브랜치에 {id}.md로 커밋한다. 커밋 작성자는 토큰 주인(사용자)이다.
+    // 잔디는 기본 브랜치 커밋만 집계되므로 브랜치를 지정하지 않는다 (빈 저장소면 첫 커밋이 기본 브랜치를 만든다).
+    async function commitMemo(token, id, text) {
+      const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
+      const title = data.questions.find((q) => q.id === id)?.title || '';
+
+      for (let attempt = 0; ; attempt++) {
+        let sha = null;
+        try {
+          ({ sha } = await githubApi(token, path));
+        } catch (err) {
+          if (err.status !== 404) throw err; // 새 파일이거나 빈 저장소
+        }
+
+        try {
+          await githubApi(token, path, {
+            method: 'PUT',
+            body: {
+              message: `${sha ? '메모 수정' : '메모 추가'}: ${id.toUpperCase()} ${title}`.trim(),
+              content: toBase64(`${text}\n`),
+              ...(sha && { sha }),
+            },
+          });
+          return;
+        } catch (err) {
+          // 다른 기기에서 그사이 커밋해 sha가 바뀌었으면 한 번 더 시도한다
+          if (err.status !== 409 || attempt > 0) throw err;
+        }
+      }
+    }
+
+    function githubErrorMessage(err) {
+      if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
+      if (err.code === 'auth/popup-blocked') return '팝업이 차단됐어요. 다시 저장해주세요.';
+      if (err.status === 429 || /rate limit/i.test(err.message)) return 'GitHub 요청 한도에 걸렸어요. 잠시 후 다시 저장해주세요.';
+      if (err.status === 403 || err.status === 404) return '저장소에 접근할 수 없어요. 앱에 저장소가 추가돼 있는지 확인해주세요.';
+      return `(${err.message})`;
+    }
+
+    // GitHub 커밋은 Firestore와 별개라, 계정 기록을 못 불러온 상태(error)에서도 한다
+    const canCommit = () => (accountMode === 'user' || accountMode === 'error') && Boolean(store.memoRepo);
+
+    // 앱을 설치한 저장소 중 잔디가 심어지는 것만 보여준다: 포크·보관 저장소 제외
+    async function listInstalledRepos(token) {
+      const { installations } = await githubApi(token, '/user/installations?per_page=100');
+      const repos = [];
+      for (const installation of installations) {
+        for (let page = 1; page <= 10; page++) {
+          const { repositories } = await githubApi(token, `/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);
+          repos.push(...repositories);
+          if (repositories.length < 100) break;
+        }
+      }
+      return repos
+        .filter((repo) => !repo.fork && !repo.archived)
+        .map((repo) => ({
+          id: repo.id,
+          fullName: repo.full_name,
+          description: repo.description || '',
+        }));
+    }
+
+    // ---------- 메모 저장소 선택 ----------
+
+    function renderRepoCard() {
+      els.repoCard.hidden = accountMode !== 'user';
+      if (els.repoCard.hidden) return;
+
+      const repo = store.memoRepo;
+      els.repoCardValue.replaceChildren();
+      els.repoCardValue.classList.toggle('is-empty', !repo);
+      if (repo) {
+        const link = document.createElement('a');
+        link.href = `https://github.com/${repo.fullName}`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = repo.fullName;
+        els.repoCardValue.append(link);
+      } else {
+        els.repoCardValue.textContent = '아직 선택하지 않았어요';
+      }
+      els.repoOpen.textContent = repo ? '변경' : '저장소 선택';
+    }
+
+    function renderRepoState(message, action) {
+      const state = document.createElement('div');
+      state.className = 'repo-state';
+      const text = document.createElement('span');
+      text.textContent = message;
+      state.append(text);
+      if (action) {
+        const button = document.createElement(action.href ? 'a' : 'button');
+        button.className = 'btn btn-sm btn-primary';
+        if (action.href) {
+          button.href = action.href;
+        } else {
+          button.type = 'button';
+          button.dataset.action = action.name;
+        }
+        button.textContent = action.label;
+        state.append(button);
+      }
+      els.repoBody.replaceChildren(state);
+    }
+
+    function renderRepoList() {
+      if (!repoCache.length) {
+        renderRepoState(
+          '아직 앱에 추가한 저장소가 없어요. 메모를 남길 저장소를 앱에 추가해주세요.',
+          { href: GITHUB_APP_INSTALL_URL, label: 'GitHub에서 저장소 추가' },
+        );
+        return;
+      }
+
+      const term = normalize(els.repoSearch.value);
+      const repos = repoCache.filter((repo) => !term || normalize(`${repo.fullName} ${repo.description}`).includes(term));
+      if (!repos.length) {
+        renderRepoState('검색 결과가 없어요.');
+        return;
+      }
+
+      const list = document.createElement('ul');
+      list.className = 'repo-list';
+      for (const repo of repos) {
+        const selected = store.memoRepo?.id === repo.id;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'repo-item';
+        button.dataset.repoId = repo.id;
+        button.setAttribute('aria-pressed', String(selected));
+
+        const name = document.createElement('span');
+        name.className = 'repo-name';
+        name.textContent = repo.fullName;
+        button.append(name);
+        if (repo.description) {
+          const description = document.createElement('span');
+          description.className = 'repo-desc';
+          description.textContent = repo.description;
+          button.append(description);
+        }
+        if (selected) {
+          const check = document.createElement('span');
+          check.className = 'repo-check';
+          check.textContent = '선택됨';
+          button.append(check);
+        }
+
+        const item = document.createElement('li');
+        item.append(button);
+        list.append(item);
+      }
+      els.repoBody.replaceChildren(list);
+    }
+
+    async function loadRepos(token, { force = false } = {}) {
+      if (repoCache && !force) {
+        renderRepoList();
+        return;
+      }
+      renderRepoState('저장소를 불러오는 중…');
+      try {
+        repoCache = await listInstalledRepos(token);
+        renderRepoList();
+      } catch (err) {
+        console.error(err);
+        if (err.code === 'github/unauthorized') {
+          renderRepoState('GitHub 연결이 만료됐어요. 다시 연결해주세요.', { name: 'repo-connect', label: 'GitHub 다시 연결' });
+        } else {
+          renderRepoState('저장소 목록을 불러오지 못했어요.', { name: 'repo-refresh', label: '다시 시도' });
+        }
+      }
+    }
+
+    // 팝업 차단을 피하려면 클릭 직후 동기적으로 팝업을 열어야 한다
+    async function connectAndLoad() {
+      renderRepoState('GitHub 창에서 계속해주세요…');
+      try {
+        const token = await connectGithub();
+        if (!token) throw new Error('GitHub 토큰을 받지 못했어요.');
+        await loadRepos(token, { force: true });
+      } catch (err) {
+        const connect = { name: 'repo-connect', label: 'GitHub 연결' };
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+          renderRepoState('저장소 목록을 보려면 GitHub 연결이 필요해요.', connect);
+        } else if (err.code === 'auth/popup-blocked') {
+          renderRepoState('팝업이 차단됐어요. 버튼을 눌러 다시 시도해주세요.', connect);
+        } else if (err.code === 'auth/user-mismatch') {
+          renderRepoState('지금 로그인한 GitHub 계정으로 연결해주세요.', connect);
+        } else {
+          console.error(err);
+          renderRepoState('GitHub에 연결하지 못했어요.', connect);
+        }
+      }
+    }
+
+    function loadReposOrConnect(options) {
+      const token = readStore('localStorage', githubTokenKey(currentUser.uid));
+      if (token) loadRepos(token, options);
+      else connectAndLoad();
+    }
+
+    function openRepoDialog() {
+      els.repoSearch.value = '';
+      els.repoDialog.showModal();
+      loadReposOrConnect();
+    }
+
+    async function selectRepo(id) {
+      const repo = repoCache.find((candidate) => String(candidate.id) === id);
+      if (!repo) return;
+      if (store.memoRepo?.id === repo.id) {
+        els.repoDialog.close();
+        return;
+      }
+
+      try {
+        await store.setMemoRepo({ id: repo.id, fullName: repo.fullName });
+        renderRepoCard();
+        els.repoDialog.close();
+        toast(`메모 저장소를 ${repo.fullName}(으)로 정했어요.`);
+      } catch (err) {
+        console.error(err);
+        toast('저장소를 저장하지 못했어요. Firestore 규칙이 최신인지 확인해주세요.', 'error');
+      }
+    }
+
+    // ---------- 질문 목록 ----------
+
+    async function fetchText(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url}: ${res.status}`);
+      return res.text();
+    }
+
+    async function loadQuestions() {
+      const [toc, categoryToc, progress] = await Promise.all([
+        fetchText('frontend/toc.md'),
+        fetchText('frontend/toc-category.md').catch(() => ''),
+        fetchText('progress.txt').catch(() => ''),
+      ]);
+
+      const categoryOf = {};
+      const categories = [];
+      let current = '';
+      for (const line of categoryToc.split('\n')) {
+        const heading = line.match(/^##\s+(.+)/);
+        if (heading) {
+          current = heading[1].trim();
+          categories.push(current);
+          continue;
+        }
+        const item = line.match(/\(contents\/(fe-\d+)\.md\)/);
+        if (item && current) categoryOf[item[1]] = current;
+      }
+
+      // send_mail.py와 같은 형식: - [질문](contents/fe-1.md)
+      const questions = [...toc.matchAll(/-\s*\[(.*?)\]\(contents\/(fe-\d+)\.md\)/g)]
+        .map(([, title, id]) => ({ id, title, category: categoryOf[id] || '' }));
+
+      // progress.txt는 지금까지 발송한 질문 수
+      const sent = parseInt(progress, 10);
+      const today = sent > 0 ? questions[sent - 1] || null : null;
+
+      return { questions, categories, today, todayNum: sent };
+    }
+
+    // ---------- 렌더링 ----------
+
+    function renderAccount(state) {
+      const { mode, user } = state;
+      const name = user ? user.displayName || user.email || 'GitHub 사용자' : '';
+      const messages = {
+        unconfigured: '이 브라우저에만 저장돼요 · Firebase를 설정하면 기기 간 동기화가 켜져요',
+        unavailable: 'Firebase를 불러오지 못해 이 브라우저에만 저장하고 있어요',
+        guest: '이 브라우저에만 저장돼요 · 로그인하면 다른 기기에서도 이어서 볼 수 있어요',
+        user: `${name} 계정에 저장돼요`,
+        error: '계정 기록을 불러오지 못했어요 · 마지막으로 불러온 기록을 보여주고, 바꾼 내용은 연결되면 저장해요',
+        denied: '이 계정은 기록 동기화가 허용되지 않았어요 · 바꾼 내용은 이 기기에만 보관돼요',
+      };
+      accountMode = mode;
+      renderRepoCard();
+      renderSaveState('');
+      els.syncText.textContent = messages[mode];
+      els.syncStatus.dataset.state = mode === 'user' ? 'synced' : ['error', 'unavailable', 'denied'].includes(mode) ? 'error' : 'local';
+
+      els.account.replaceChildren();
+      if (mode === 'guest') {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-primary';
+        button.innerHTML = `${GITHUB_ICON}<span>GitHub로 로그인</span>`;
+        button.addEventListener('click', login);
+        els.account.append(button);
+      } else if (user) {
+        const info = document.createElement('span');
+        info.className = 'account-user';
+        if (user.photoURL) {
+          const avatar = document.createElement('img');
+          avatar.src = user.photoURL;
+          avatar.alt = '';
+          info.append(avatar);
+        }
+        const label = document.createElement('span');
+        label.className = 'account-name';
+        label.textContent = name;
+        info.append(label);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn';
+        button.textContent = '로그아웃';
+        button.addEventListener('click', logout);
+        els.account.append(info, button);
+      }
+    }
+
+    function renderSkeleton() {
+      els.list.innerHTML = Array.from({ length: 6 }, () => `
+        <li class="q-row">
+          <div class="skeleton skeleton-line" style="width: 48px;"></div>
+          <div class="skeleton skeleton-line" style="width: 70%; height: 18px;"></div>
+          <div class="skeleton skeleton-line" style="width: 30%;"></div>
+        </li>`).join('');
+    }
+
+    function renderCategories() {
+      const counts = {};
+      for (const q of data.questions) counts[q.category] = (counts[q.category] || 0) + 1;
+      for (const category of data.categories) {
+        const option = document.createElement('option');
+        option.value = category;
+        option.textContent = `${category} (${counts[category] || 0})`;
+        els.category.append(option);
+      }
+    }
+
+    function createRow(q) {
+      const row = els.rowTemplate.content.firstElementChild.cloneNode(true);
+      row.dataset.id = q.id;
+      row.querySelector('.q-id').textContent = q.id.toUpperCase();
+      const link = row.querySelector('.q-title');
+      link.href = `questions/?q=${q.id}`;
+      link.textContent = q.title;
+      row.querySelector('.q-cat').textContent = q.category;
+      return row;
+    }
+
+    function renderAll() {
+      rows.clear();
+      const fragment = document.createDocumentFragment();
+      for (const q of data.questions) {
+        const row = createRow(q);
+        rows.set(q.id, row);
+        fragment.append(row);
+        updateRow(q.id);
+      }
+      const empty = document.createElement('li');
+      empty.className = 'empty';
+      empty.id = 'empty';
+      empty.textContent = '조건에 맞는 질문이 없어요.';
+      empty.hidden = true;
+      fragment.append(empty);
+
+      els.list.replaceChildren(fragment);
+      renderToday();
+      updateStats();
+      applyFilter();
+    }
+
+    function updateRow(id) {
+      const row = rows.get(id);
+      if (!row) return;
+      const item = store.item(id);
+      const level = item.level || 'new';
+
+      row.dataset.state = level;
+      for (const button of row.querySelectorAll('.level-seg button')) {
+        button.setAttribute('aria-pressed', String(button.dataset.level === level));
+      }
+
+      const star = row.querySelector('.star-btn');
+      star.setAttribute('aria-pressed', String(Boolean(item.starred)));
+      star.setAttribute('aria-label', item.starred ? '별표 해제' : '별표');
+
+      const preview = row.querySelector('.q-memo-preview');
+      preview.textContent = item.memo ? item.memo.replace(/\s+/g, ' ') : '';
+      preview.hidden = !item.memo;
+      row.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(item.memo));
+    }
+
+    function renderToday() {
+      const q = data.today;
+      els.today.hidden = !q;
+      if (!q) return;
+      els.today.href = `questions/?q=${q.id}`;
+      els.todayNum.textContent = data.todayNum;
+      els.todayTitle.textContent = q.title;
+    }
+
+    function updateStats() {
+      const counts = { all: data.questions.length, new: 0, review: 0, done: 0 };
+      for (const q of data.questions) counts[store.level(q.id)]++;
+      for (const [key, value] of Object.entries(counts)) {
+        els.stats.querySelector(`[data-count="${key}"]`).textContent = value;
+      }
+
+      const percent = (n) => (counts.all ? (n / counts.all) * 100 : 0);
+      els.progressDone.style.width = `${percent(counts.done)}%`;
+      els.progressReview.style.width = `${percent(counts.review)}%`;
+      els.progressText.textContent = `${counts.all}개 중 ${counts.done}개 완벽 이해 (${Math.round(percent(counts.done))}%)`;
+      els.starCount.textContent = data.questions.filter((q) => store.item(q.id).starred).length;
+    }
+
+    const normalize = (text) => text.toLowerCase().replace(/\s+/g, '');
+
+    // 학습 수준이나 별표를 바꿀 때는 다시 거르지 않는다. 필터 중인 행이 눈앞에서 사라지지 않도록.
+    function applyFilter() {
+      const term = normalize(filter.text);
+      let shown = 0;
+      for (const q of data.questions) {
+        const item = store.item(q.id);
+        const visible = (filter.level === 'all' || filter.level === (item.level || 'new'))
+          && (!filter.starred || item.starred)
+          && (!filter.category || q.category === filter.category)
+          && (!term || normalize(`${q.id} ${q.title} ${item.memo || ''}`).includes(term));
+        rows.get(q.id).hidden = !visible;
+        if (visible) shown++;
+      }
+      document.getElementById('empty').hidden = shown > 0;
+      els.resultCount.textContent = `질문 ${shown}개`;
+    }
+
+    // ---------- 학습 수준, 별표 & 메모 ----------
+
+    function setLevel(id, level) {
+      if (store.level(id) === level) return;
+      store.update(id, { level: level === 'new' ? null : level });
+      updateRow(id);
+      updateStats();
+      saveSoon();
+    }
+
+    function toggleStar(id) {
+      store.update(id, { starred: store.item(id).starred ? null : true });
+      updateRow(id);
+      updateStats();
+      saveSoon();
+    }
+
+    function editorOf(row) {
+      return row.querySelector('.memo-editor');
+    }
+
+    // 고친 내용이 있거나, 저장은 됐지만 GitHub 커밋이 실패해 다시 올려야 하는 상태
+    function isDirty(row) {
+      const textarea = editorOf(row)?.querySelector('textarea');
+      if (!textarea) return false;
+      const text = textarea.value.trim();
+      return text !== (store.item(row.dataset.id).memo || '') || (Boolean(text) && uncommitted.has(row.dataset.id));
+    }
+
+    function hasDirtyEditor() {
+      return [...rows.values()].some(isDirty);
+    }
+
+    function autosize(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight + 2}px`;
+    }
+
+    const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    function updateEditor(row) {
+      const editor = editorOf(row);
+      if (!editor) return;
+      const item = store.item(row.dataset.id);
+      editor.querySelector('.memo-count').textContent = `${editor.querySelector('textarea').value.length} / ${MEMO_MAX}`;
+      editor.querySelector('.memo-saved').textContent = item.memoAt
+        ? `마지막 저장 ${dateFormat.format(item.memoAt)}`
+        : '';
+
+      const github = editor.querySelector('.memo-github');
+      const failed = uncommitted.has(row.dataset.id);
+      github.classList.toggle('is-error', failed);
+      github.textContent = !canCommit() || !editor.querySelector('textarea').value.trim() ? ''
+        : failed ? 'GitHub에 아직 올리지 못했어요 · 다시 저장해주세요'
+        : `저장하면 ${store.memoRepo.fullName}의 ${row.dataset.id}.md로 커밋돼요`;
+
+      editor.querySelector('[data-action="memo-save"]').disabled = !isDirty(row);
+    }
+
+    function openEditor(row) {
+      const editor = els.editorTemplate.content.firstElementChild.cloneNode(true);
+      const textarea = editor.querySelector('textarea');
+      textarea.maxLength = MEMO_MAX;
+      textarea.value = store.item(row.dataset.id).memo || '';
+      textarea.setAttribute('aria-label', `${row.dataset.id.toUpperCase()} 메모`);
+
+      row.append(editor);
+      row.querySelector('.memo-btn').setAttribute('aria-expanded', 'true');
+      updateEditor(row);
+      autosize(textarea);
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+
+    function closeEditor(row) {
+      const editor = editorOf(row);
+      if (!editor) return;
+      if (isDirty(row) && !confirm('저장하지 않은 메모가 있어요. 닫을까요?')) return;
+      editor.remove();
+      const memoButton = row.querySelector('.memo-btn');
+      memoButton.setAttribute('aria-expanded', 'false');
+      memoButton.focus();
+    }
+
+    async function saveMemo(row) {
+      const id = row.dataset.id;
+      const editor = editorOf(row);
+      const textarea = editor.querySelector('textarea');
+      const saveButton = editor.querySelector('[data-action="memo-save"]');
+      const text = textarea.value.trim();
+      const changed = text !== (store.item(id).memo || '');
+      // 메모를 지울 때는 GitHub 파일을 그대로 둔다 (학습 기록으로 남긴다)
+      const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
+
+      textarea.value = text;
+      saveButton.disabled = true;
+      saveButton.textContent = '저장 중…';
+      if (changed) {
+        store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
+        updateRow(id);
+        renderSaveState('pending');
+      }
+
+      // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
+      const [saved, committed] = await Promise.allSettled([
+        changed ? store.flush() : Promise.resolve(),
+        shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text)) : Promise.resolve(),
+      ]);
+
+      if (shouldCommit) {
+        if (committed.status === 'fulfilled') uncommitted.delete(id);
+        else uncommitted.add(id);
+      }
+
+      if (changed && saved.status === 'fulfilled') renderSaveState(store.busy ? 'pending' : 'saved');
+
+      if (saved.status === 'rejected') {
+        saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
+        handleSaveError(saved.reason);
+      } else if (committed.status === 'rejected') {
+        console.error(committed.reason);
+        toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
+      } else {
+        saveErrorShown = false;
+        retryDelay = RETRY_BASE;
+        toast(shouldCommit
+          ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
+          : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
+      }
+
+      saveButton.textContent = '저장';
+      updateEditor(row);
+    }
+
+    // 다른 기기에서 바꾼 내용을 보도록, 오래 자리를 비웠다 돌아오면 다시 읽는다 (Firestore 읽기 1회)
+    // 계정 기록을 못 불러온 상태(error)였다면 다시 불러오는 데 성공한 순간 정상으로 돌아온다
+    async function refreshIfStale() {
+      if ((accountMode !== 'user' && accountMode !== 'error') || store.saving || hasDirtyEditor()) return;
+      if (Date.now() - store.loadedAt < STALE_AFTER) return;
+      try {
+        await store.refresh();
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      if (accountMode === 'error') {
+        renderAccount({ mode: 'user', user: currentUser });
+        if (store.busy) flushInBackground();
+      }
+
+      for (const q of data.questions) updateRow(q.id);
+      for (const row of rows.values()) {
+        const textarea = editorOf(row)?.querySelector('textarea');
+        if (!textarea) continue;
+        textarea.value = store.item(row.dataset.id).memo || '';
+        autosize(textarea);
+        updateEditor(row);
+      }
+      updateStats();
+      renderRepoCard();
+    }
+
+    // ---------- 기타 ----------
+
+    let toastTimer = 0;
+
+    function toast(message, tone = 'info', duration = 2800) {
+      els.toast.textContent = message;
+      els.toast.dataset.tone = tone;
+      els.toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => els.toast.classList.remove('show'), duration);
     }
 
     function initTheme() {
-      const savedTheme = localStorage.getItem('theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const theme = savedTheme || (prefersDark ? 'dark' : 'light');
-
-      if (theme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
-
       document.getElementById('theme-toggle').addEventListener('click', () => {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const nextTheme = isDark ? 'light' : 'dark';
-
-        if (nextTheme === 'dark') {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        } else {
-          document.documentElement.removeAttribute('data-theme');
-        }
-        localStorage.setItem('theme', nextTheme);
+        const nextTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        if (nextTheme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        else document.documentElement.removeAttribute('data-theme');
+        try { localStorage.setItem('theme', nextTheme); } catch { /* 저장소를 쓸 수 없는 환경 */ }
       });
     }
 
-    initTheme();
-    loadContent();
+    function bindEvents() {
+      els.list.addEventListener('click', (e) => {
+        const row = e.target.closest('.q-row');
+        if (!row || !row.dataset.id) return;
+
+        const levelButton = e.target.closest('.level-seg button');
+        if (levelButton) {
+          setLevel(row.dataset.id, levelButton.dataset.level);
+          return;
+        }
+
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        if (action === 'star') toggleStar(row.dataset.id);
+        else if (action === 'memo') editorOf(row) ? closeEditor(row) : openEditor(row);
+        else if (action === 'memo-close') closeEditor(row);
+        else if (action === 'memo-save') saveMemo(row);
+      });
+
+      els.list.addEventListener('input', (e) => {
+        if (!e.target.matches('.memo-editor textarea')) return;
+        autosize(e.target);
+        updateEditor(e.target.closest('.q-row'));
+      });
+
+      els.list.addEventListener('keydown', (e) => {
+        if (!e.target.matches('.memo-editor textarea')) return;
+        const row = e.target.closest('.q-row');
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          if (isDirty(row)) saveMemo(row);
+        } else if (e.key === 'Escape') {
+          closeEditor(row);
+        }
+      });
+
+      els.stats.addEventListener('click', (e) => {
+        const button = e.target.closest('[data-filter]');
+        if (!button) return;
+        filter.level = button.dataset.filter;
+        for (const stat of els.stats.querySelectorAll('[data-filter]')) {
+          stat.setAttribute('aria-pressed', String(stat === button));
+        }
+        applyFilter();
+      });
+
+      els.search.addEventListener('input', () => {
+        filter.text = els.search.value;
+        applyFilter();
+      });
+
+      els.category.addEventListener('change', () => {
+        filter.category = els.category.value;
+        applyFilter();
+      });
+
+      els.starFilter.addEventListener('click', () => {
+        filter.starred = !filter.starred;
+        els.starFilter.setAttribute('aria-pressed', String(filter.starred));
+        applyFilter();
+      });
+
+      els.repoOpen.addEventListener('click', openRepoDialog);
+
+      els.repoDialog.addEventListener('click', (e) => {
+        // 바깥(배경)을 누르면 닫는다
+        if (e.target === els.repoDialog) {
+          els.repoDialog.close();
+          return;
+        }
+
+        const repoButton = e.target.closest('.repo-item');
+        if (repoButton) {
+          selectRepo(repoButton.dataset.repoId);
+          return;
+        }
+
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        if (action === 'repo-close') els.repoDialog.close();
+        else if (action === 'repo-connect') connectAndLoad();
+        else if (action === 'repo-refresh') loadReposOrConnect({ force: true });
+      });
+
+      els.repoSearch.addEventListener('input', () => {
+        if (repoCache) renderRepoList();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || els.repoDialog.open) return;
+        if (e.target.closest('input, textarea, select, [contenteditable]')) return;
+        e.preventDefault();
+        els.search.focus();
+      });
+
+      // 질문을 열기 전에 아직 쓰지 않은 변경을 먼저 저장한다 (저장이 실패하는 중이면 기다리지 않는다. 변경은 이 기기에 보관돼 있다)
+      document.addEventListener('click', async (e) => {
+        const link = e.target.closest('a.q-link');
+        if (!link || !store.busy || saveErrorShown || accountMode === 'denied') return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        await Promise.race([
+          store.flush().catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+        location.href = link.href;
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown && accountMode !== 'denied') flushInBackground();
+        else if (document.visibilityState === 'visible') refreshIfStale();
+      });
+
+      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모 편집뿐이다
+      window.addEventListener('beforeunload', (e) => {
+        if (hasDirtyEditor()) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+    }
+
+    async function main() {
+      initTheme();
+      renderSkeleton();
+      els.repoCard.querySelector('.repo-card-icon').innerHTML = GITHUB_ICON;
+      document.getElementById('repo-install-link').href = GITHUB_APP_INSTALL_URL;
+
+      const dataReady = initData();
+      try {
+        data = await loadQuestions();
+      } catch (err) {
+        console.error(err);
+        els.list.innerHTML = '<li class="empty">질문 목록을 불러오지 못했어요. 잠시 후 새로고침해주세요.</li>';
+        return;
+      }
+      await dataReady;
+
+      // 뒤로가기로 돌아왔을 때 브라우저가 복원한 입력값을 반영한다
+      filter.text = els.search.value;
+      renderCategories();
+      filter.category = els.category.value;
+      bindEvents();
+      renderAll();
+
+      // GitHub 앱 설치를 마치고 돌아오면(Setup URL에 setup_action이 붙는다) 저장소 선택 창을 바로 연다
+      if (new URLSearchParams(location.search).has('setup_action')) {
+        history.replaceState(null, '', location.pathname);
+        if (accountMode === 'user') openRepoDialog();
+      }
+    }
+
+    main();
   </script>
 </body>
 </html>

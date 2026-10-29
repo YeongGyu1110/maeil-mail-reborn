@@ -43,7 +43,7 @@ def main():
         return
 
     title, file_id = questions[idx]
-    viewer_url = f"{GITHUB_PAGES_URL}/?q={file_id}" if GITHUB_PAGES_URL else "#"
+    viewer_url = f"{GITHUB_PAGES_URL}/questions/?q={file_id}" if GITHUB_PAGES_URL else "#"
 
     # HTML 템플릿 치환
     template = Path(TEMPLATE_FILE).read_text(encoding='utf-8')
