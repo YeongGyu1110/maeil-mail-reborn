@@ -3,12 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>매일메일 면접 뷰어</title>
+  <title>매일메일 면접 질문</title>
+
+  <!-- 테마 깜빡임 방지 (localStorage는 테마 전용) -->
+  <script>
+    (function () {
+      try {
+        const saved = localStorage.getItem('theme');
+        const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+      } catch (e) {}
+    })();
+  </script>
 
   <!-- Pretendard 폰트 -->
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 
-  <!-- 마크다운 파서 및 Prism.js (고정 테마 CSS 제거 후 CSS 변수로 일원화) -->
+  <!-- 마크다운 파서 및 Prism.js -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
@@ -18,307 +29,330 @@
 
   <style>
     :root {
-      --bg-body: #f9fafb;
-      --bg-card: #ffffff;
-      --border-color: #e5e8eb;
-      --text-main: #191f28;
+      /* [라이트 모드] 책상(캔버스) 위에 놓인 흰 종이 */
+      --bg-canvas: #e9ecef;
+      --bg-paper: #fdfdfd;
+      --bg-subtle: #f1f3f5;
+      --bg-hover: #dfe3e7;
+      --rule: #d5dae0;
+      --rule-strong: #8a939d;
+      --paper-shadow: 0 1px 2px rgba(20, 23, 26, 0.06), 0 4px 16px rgba(20, 23, 26, 0.05);
+
+      --text-main: #14171a;
       --text-sub: #333d4b;
-      --text-muted: #8b95a1;
-      --primary: #00a86b;
-      --primary-light: #e8f5e9;
-      --code-inline-bg: #eaf5ee;
-      --code-inline-color: #0b7a48;
-      --table-header-bg: #f9fafb;
-      --skeleton-base: #f0f2f5;
-      --skeleton-highlight: #e4e7eb;
+      --text-muted: #6b7682;
 
-      /* [라이트 테마] 코드 블록 & 복사 버튼 */
-      --code-block-bg: #f6f8fa;
-      --code-block-border: #e1e4e8;
-      --code-block-text: #24292f;
-      --code-btn-bg: rgba(0, 0, 0, 0.05);
-      --code-btn-border: rgba(0, 0, 0, 0.1);
-      --code-btn-text: #57606a;
-      --code-btn-hover-bg: rgba(0, 0, 0, 0.1);
-      --code-btn-hover-text: #24292f;
+      --primary: #00875a;
+      --danger: #c62828;
 
-      /* [라이트 테마] 신택스 하이라이팅 (GitHub Light 톤) */
-      --syntax-comment: #6e7781;
-      --syntax-punctuation: #57606a;
-      --syntax-keyword: #cf222e;
-      --syntax-tag: #116329;
-      --syntax-string: #0a3069;
-      --syntax-number: #0550ae;
-      --syntax-function: #8250df;
-      --syntax-operator: #cf222e;
-      --syntax-variable: #953800;
+      --skeleton-base: #eceef1;
+      --skeleton-highlight: #dde1e5;
+
+      /* 코드 블록 */
+      --code-block-bg: #f3f5f7;
+      --code-block-text: #1e293b;
+      --code-inline-bg: #eef0f3;
+      --code-inline-color: #1e293b;
+
+      --syntax-comment: #64748b;
+      --syntax-punctuation: #475569;
+      --syntax-keyword: #c2410c;
+      --syntax-tag: #15803d;
+      --syntax-string: #0369a1;
+      --syntax-number: #0284c7;
+      --syntax-function: #7c3aed;
+      --syntax-operator: #c2410c;
+      --syntax-variable: #b45309;
     }
 
-    /* 다크 테마 팔레트 */
     [data-theme="dark"] {
-      --bg-body: #111315;
-      --bg-card: #181a1d;
-      --border-color: #2c3138;
-      --text-main: #f0f3f6;
-      --text-sub: #c5cbd3;
-      --text-muted: #767f8d;
+      /* [다크 모드] 무채색 흑연 캔버스 위의 짙은 종이 */
+      --bg-canvas: #111113;
+      --bg-paper: #1a1a1c;
+      --bg-subtle: #222225;
+      --bg-hover: #26262a;
+      --rule: #303035;
+      --rule-strong: #6c727b;
+      --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+      --text-main: #f0f2f5;
+      --text-sub: #c4c8cf;
+      --text-muted: #838a94;
+
       --primary: #00c47d;
-      --primary-light: rgba(0, 196, 125, 0.16);
-      --code-inline-bg: rgba(0, 196, 125, 0.14);
-      --code-inline-color: #34d399;
-      --table-header-bg: #202327;
-      --skeleton-base: #24272c;
-      --skeleton-highlight: #30353c;
+      --danger: #f87171;
 
-      /* [다크 테마] 코드 블록 & 복사 버튼 */
-      --code-block-bg: #121417;
-      --code-block-border: #282c34;
-      --code-block-text: #e6edf3;
-      --code-btn-bg: rgba(255, 255, 255, 0.08);
-      --code-btn-border: rgba(255, 255, 255, 0.15);
-      --code-btn-text: #8b949e;
-      --code-btn-hover-bg: rgba(255, 255, 255, 0.18);
-      --code-btn-hover-text: #f0f6fc;
+      --skeleton-base: #232326;
+      --skeleton-highlight: #2e2e32;
 
-      /* [다크 테마] 신택스 하이라이팅 (GitHub / One Dark 톤) */
-      --syntax-comment: #8b949e;
-      --syntax-punctuation: #7d8590;
-      --syntax-keyword: #ff7b72;
-      --syntax-tag: #7ee787;
-      --syntax-string: #a5d6ff;
-      --syntax-number: #79c0ff;
-      --syntax-function: #d2a8ff;
-      --syntax-operator: #ff7b72;
-      --syntax-variable: #ffa657;
+      /* 코드 블록 */
+      --code-block-bg: #141416;
+      --code-block-text: #e2e8f0;
+      --code-inline-bg: #26262a;
+      --code-inline-color: #e2e8f0;
+
+      --syntax-comment: #828d9d;
+      --syntax-punctuation: #94a3b8;
+      --syntax-keyword: #fb923c;
+      --syntax-tag: #4ade80;
+      --syntax-string: #7dd3fc;
+      --syntax-number: #38bdf8;
+      --syntax-function: #c084fc;
+      --syntax-operator: #fb923c;
+      --syntax-variable: #fbbf24;
     }
 
-    /* 상단 헤더 바 & 테마 토글 버튼 */
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
+    * { box-sizing: border-box; }
 
-    .header-bar .badge,
-    .header-bar .skeleton-badge {
-      margin-bottom: 0;
-    }
-
-    .theme-toggle-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      background: transparent;
-      border: 1px solid var(--border-color);
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.75;
+      letter-spacing: -0.015em;
       color: var(--text-sub);
-      cursor: pointer;
-      transition: background-color 0.2s, color 0.2s;
+      background-color: var(--bg-canvas);
+      transition: background-color 0.15s ease, color 0.15s ease;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .theme-toggle-btn:hover {
-      background-color: var(--table-header-bg);
-      color: var(--text-main);
+    /* 상단 내비게이션 바: 캔버스와 같은 면, 구분선 없음 */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      padding: 0 24px;
+      background-color: var(--bg-canvas);
     }
 
-    .header-actions {
+    .nav-breadcrumbs {
       display: flex;
       align-items: center;
       gap: 8px;
+      min-width: 0;
+      font-size: 13.5px;
+      font-weight: 500;
     }
 
-    .back-link {
+    .nav-brand {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      height: 36px;
-      padding: 0 12px;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-      color: var(--text-sub);
-      font-size: 14px;
-      font-weight: 600;
+      gap: 6px;
+      font-weight: 700;
+      color: var(--text-main);
       text-decoration: none;
-      transition: background-color 0.2s, color 0.2s;
     }
 
-    .back-link:hover {
-      background-color: var(--table-header-bg);
+    .nav-brand .brand-dot {
+      width: 7px;
+      height: 7px;
+      background-color: var(--primary);
+      border-radius: 1px;
+    }
+
+    .nav-separator {
+      color: var(--rule-strong);
+      user-select: none;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: color 0.15s;
+    }
+
+    .nav-link:hover {
       color: var(--text-main);
+    }
+
+    .nav-current {
+      color: var(--text-main);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 테두리 없는 텍스트형 버튼 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 3px;
+      background-color: transparent;
+      color: var(--text-sub);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-main);
+    }
+
+    .btn-icon-only {
+      width: 32px;
+      padding: 0;
     }
 
     .sun-icon { display: none; }
     .moon-icon { display: block; }
-
     [data-theme="dark"] .sun-icon { display: block; }
     [data-theme="dark"] .moon-icon { display: none; }
 
-    /* 스켈레톤 UI */
-    .skeleton {
-      background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
-      background-size: 200% 100%;
-      animation: skeleton-shimmer 1.5s ease-in-out infinite;
-      border-radius: 6px;
+    /* 문서 지면: 테두리 대신 면 대비와 옅은 그림자로 종이를 구분 */
+    .page-wrapper {
+      max-width: 820px;
+      margin: 20px auto 72px;
+      padding: 0 20px;
     }
 
-    @keyframes skeleton-shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
+    .doc-container {
+      background: var(--bg-paper);
+      border-radius: 2px;
+      box-shadow: var(--paper-shadow);
+      padding: 56px 72px 48px;
     }
 
-    .skeleton-badge {
-      width: 96px;
-      height: 25px;
-      display: inline-block;
-      margin-bottom: 12px;
+    /* 문서 머리: 분류·문서 번호 → 제목 → 머리 구분선 */
+    .doc-header {
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--rule-strong);
+      margin-bottom: 36px;
     }
 
-    .skeleton-title {
-      width: 75%;
-      height: 32px;
-      border-radius: 8px;
-    }
-
-    .skeleton-line {
-      height: 16px;
-      margin-bottom: 12px;
-    }
-
-    * { box-sizing: border-box; }
-    
-    body {
-      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-      line-height: 1.75;
-      letter-spacing: -0.02em;
-      color: var(--text-sub);
-      background-color: var(--bg-body);
-      margin: 0;
-      padding: 40px 20px;
-      transition: background-color 0.2s;
-    }
-
-    .container {
-      max-width: 768px;
-      margin: 0 auto;
-      background: var(--bg-card);
-      padding: 44px 48px;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
-      border: 1px solid var(--border-color);
-      transition: background-color 0.2s, border-color 0.2s;
-    }
-
-    .badge {
-      display: inline-block;
-      background: var(--primary-light);
-      color: var(--primary);
-      font-size: 13px;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 6px;
-      margin-bottom: 12px;
+    .doc-meta {
+      margin-bottom: 18px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.01em;
     }
 
     h1#question-title {
-      font-size: 26px;
+      font-size: 27px;
       font-weight: 700;
       color: var(--text-main);
-      margin: 0 0 24px 0;
+      margin: 0;
       line-height: 1.45;
+      letter-spacing: -0.025em;
       word-break: keep-all;
       overflow-wrap: break-word;
     }
 
-    hr {
-      border: 0;
-      border-top: 1px solid var(--border-color);
-      margin: 28px 0;
-    }
-
+    /* 본문 마크다운 타이포그래피 */
     #content {
       font-size: 16px;
+      line-height: 1.85;
       color: var(--text-sub);
       word-break: keep-all;
       overflow-wrap: break-word;
     }
 
+    #content > *:first-child { margin-top: 0; }
+    #content > *:last-child { margin-bottom: 0; }
+
     #content h2 {
-      font-size: 21px;
+      font-size: 20px;
       font-weight: 700;
-      margin-top: 40px;
-      margin-bottom: 14px;
+      line-height: 1.5;
+      margin: 48px 0 14px;
       color: var(--text-main);
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 8px;
     }
 
     #content h3 {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 700;
-      margin-top: 28px;
-      margin-bottom: 10px;
+      margin: 32px 0 10px;
       color: var(--text-main);
     }
 
     #content h4 {
-      font-size: 16px;
+      font-size: 15.5px;
       font-weight: 600;
-      margin-top: 22px;
-      margin-bottom: 8px;
+      margin: 24px 0 8px;
       color: var(--text-main);
     }
 
-    #content p { margin: 16px 0; }
+    #content p { margin: 18px 0; }
     #content strong { font-weight: 700; color: var(--text-main); }
-    #content ul, #content ol { padding-left: 24px; margin: 16px 0; }
+    #content ul, #content ol { padding-left: 22px; margin: 18px 0; }
     #content li { margin-bottom: 6px; }
-    #content li > p { margin: 6px 0; }
+    #content li::marker { color: var(--text-muted); }
+    #content img { max-width: 100%; }
 
-    #content blockquote {
-      margin: 20px 0;
-      padding: 12px 20px;
-      border-left: 4px solid var(--primary);
-      background: var(--bg-body);
-      color: var(--text-sub);
-      border-radius: 0 8px 8px 0;
+    #content hr {
+      border: none;
+      border-top: 1px solid var(--rule);
+      margin: 36px 0;
     }
 
+    /* 인용구: 왼쪽 세로줄만 */
+    #content blockquote {
+      margin: 22px 0;
+      padding: 2px 0 2px 18px;
+      border-left: 2px solid var(--rule-strong);
+      color: var(--text-muted);
+    }
+
+    #content blockquote > :first-child { margin-top: 0; }
+    #content blockquote > :last-child { margin-bottom: 0; }
+
+    /* 표:위·아래 굵은 선과 머리 아래 선만 두는 문서식 표 */
     #content table {
       width: 100%;
       border-collapse: collapse;
-      margin: 24px 0;
-      font-size: 15px;
-    }
-
-    #content th, #content td {
-      border: 1px solid var(--border-color);
-      padding: 10px 14px;
-      text-align: left;
+      margin: 28px 0;
+      font-size: 14.5px;
+      line-height: 1.65;
+      border-top: 1.5px solid var(--text-main);
+      border-bottom: 1.5px solid var(--text-main);
     }
 
     #content th {
-      background: var(--table-header-bg);
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--rule-strong);
+      text-align: left;
       font-weight: 600;
       color: var(--text-main);
     }
 
-    /* 인라인 코드 */
+    #content td {
+      padding: 10px 14px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    #content tbody tr + tr td { border-top: 1px solid var(--rule); }
+
     #content code:not(pre code) {
       background: var(--code-inline-bg);
       color: var(--code-inline-color);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 14px;
-      font-weight: 600;
+      padding: 2px 5px;
+      border-radius: 2px;
+      font-size: 0.86em;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
 
-    /* =========================================
-       코드 블록 & 구문 하이라이팅 (개선 영역)
-       ========================================= */
+    /* 코드 블록: 테두리 없이 옅은 면으로만 구분 */
     .code-wrapper {
       position: relative;
       margin: 24px 0;
@@ -326,17 +360,15 @@
 
     #content pre {
       background-color: var(--code-block-bg);
-      border: 1px solid var(--code-block-border);
-      border-radius: 10px;
+      border-radius: 2px;
       padding: 18px 20px;
       overflow-x: auto;
       margin: 0;
       color: var(--code-block-text);
-      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13.5px;
       line-height: 1.65;
       tab-size: 2;
-      transition: background-color 0.2s, border-color 0.2s;
     }
 
     #content pre code {
@@ -344,193 +376,283 @@
       color: inherit;
     }
 
-    /* 스크롤바 미세 조정 */
-    #content pre::-webkit-scrollbar {
-      height: 6px;
-    }
-    #content pre::-webkit-scrollbar-thumb {
-      background: var(--border-color);
-      border-radius: 3px;
-    }
-
-    /* Prism.js 구문 토큰 색상 정의 */
-    .token.comment,
-    .token.prolog,
-    .token.doctype,
-    .token.cdata {
-      color: var(--syntax-comment);
-      font-style: italic;
-    }
-
-    .token.punctuation {
-      color: var(--syntax-punctuation);
-    }
-
-    .token.property,
-    .token.tag,
-    .token.boolean,
-    .token.constant,
-    .token.symbol,
-    .token.deleted {
-      color: var(--syntax-tag);
-    }
-
-    .token.number {
-      color: var(--syntax-number);
-    }
-
-    .token.selector,
-    .token.attr-name,
-    .token.string,
-    .token.char,
-    .token.builtin,
-    .token.inserted {
-      color: var(--syntax-string);
-    }
-
-    .token.operator,
-    .token.entity,
-    .token.url {
-      color: var(--syntax-operator);
-    }
-
-    .token.atrule,
-    .token.attr-value,
-    .token.keyword {
-      color: var(--syntax-keyword);
-      font-weight: 600;
-    }
-
-    .token.function,
-    .token.class-name {
-      color: var(--syntax-function);
-    }
-
-    .token.regex,
-    .token.important,
-    .token.variable {
-      color: var(--syntax-variable);
-    }
-
-    /* 코드 복사 버튼 */
+    /* 코드 복사 버튼: 코드에 손을 올렸을 때만 표시 */
     .code-copy-btn {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      background: var(--code-btn-bg);
-      border: 1px solid var(--code-btn-border);
-      color: var(--code-btn-text);
-      font-size: 12px;
-      font-weight: 500;
+      top: 8px;
+      right: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
       font-family: inherit;
-      padding: 5px 10px;
-      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 2px;
       cursor: pointer;
-      backdrop-filter: blur(4px);
-      transition: all 0.2s ease;
       user-select: none;
+      opacity: 0;
+      transition: opacity 0.15s, background-color 0.15s, color 0.15s;
     }
+
+    .code-wrapper:hover .code-copy-btn,
+    .code-copy-btn:focus-visible,
+    .code-copy-btn.copied { opacity: 1; }
 
     .code-copy-btn:hover {
-      background: var(--code-btn-hover-bg);
-      color: var(--code-btn-hover-text);
+      background: var(--bg-hover);
+      color: var(--text-main);
     }
 
-    .code-copy-btn.copied {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: #ffffff;
+    .code-copy-btn.copied { color: var(--primary); }
+
+    @media (hover: none) {
+      .code-copy-btn { opacity: 1; }
     }
 
     #content a {
       color: var(--primary);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    /* Prism 토큰 스타일 */
+    .token.comment, .token.prolog, .token.doctype, .token.cdata { color: var(--syntax-comment); font-style: italic; }
+    .token.punctuation { color: var(--syntax-punctuation); }
+    .token.property, .token.tag, .token.boolean, .token.constant, .token.symbol { color: var(--syntax-tag); }
+    .token.number { color: var(--syntax-number); }
+    .token.string, .token.char, .token.builtin, .token.inserted { color: var(--syntax-string); }
+    .token.operator, .token.entity, .token.url { color: var(--syntax-operator); }
+    .token.keyword { color: var(--syntax-keyword); font-weight: 600; }
+    .token.function, .token.class-name { color: var(--syntax-function); }
+    .token.variable { color: var(--syntax-variable); }
+
+    /* 문서 꼬리: 이전 / 다음 질문 */
+    .doc-pagination {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 56px;
+      padding-top: 20px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .page-nav-card {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
       text-decoration: none;
     }
 
-    #content a:hover {
-      text-decoration: underline;
+    .page-nav-card.next { text-align: right; }
+
+    .page-nav-sub {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .page-nav-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-underline-offset: 3px;
+    }
+
+    .page-nav-card:hover .page-nav-title { text-decoration: underline; }
+
+    /* 오류 안내 */
+    .doc-error {
+      padding: 2px 0 2px 16px;
+      border-left: 2px solid var(--danger);
+    }
+
+    .doc-error p { margin: 0; }
+    .doc-error .doc-error-title { color: var(--danger); font-weight: 600; }
+    .doc-error .doc-error-hint { margin-top: 6px; font-size: 14px; color: var(--text-muted); }
+
+    /* 스켈레톤 로딩 */
+    .skeleton {
+      background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.4s ease-in-out infinite;
+      border-radius: 2px;
+    }
+
+    @keyframes skeleton-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .skeleton-title { width: 70%; height: 30px; }
+    .skeleton-line { height: 15px; margin-bottom: 14px; }
+
+    /* 토스트 */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: var(--text-main);
+      color: var(--bg-paper);
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 3px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 200;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
 
     @media (max-width: 640px) {
-      body {
-        padding: 0;
-        background-color: var(--bg-card);
-      }
-
-      .container {
-        padding: 24px 20px;
-        border: none;
+      .top-nav { padding: 0 12px; }
+      .nav-brand span { display: none; }
+      .page-wrapper { margin: 0; padding: 0; }
+      .doc-container {
         border-radius: 0;
         box-shadow: none;
+        padding: 32px 20px 28px;
       }
-
-      h1#question-title {
-        font-size: 22px;
-        margin-bottom: 18px;
-      }
-
+      .doc-meta { margin-bottom: 14px; }
+      h1#question-title { font-size: 23px; }
       #content { font-size: 15.5px; }
-      #content h2 { font-size: 19px; }
-      #content h3 { font-size: 17px; }
-
+      .doc-pagination { grid-template-columns: 1fr; gap: 16px; }
+      .page-nav-card.next { text-align: left; }
       #content table {
         display: block;
         overflow-x: auto;
         white-space: nowrap;
       }
     }
+
+    /* 인쇄: 지면만 남긴다 */
+    @media print {
+      body { background: #ffffff; }
+      .top-nav, .doc-pagination, .code-copy-btn, .toast { display: none !important; }
+      .page-wrapper { max-width: none; margin: 0; padding: 0; }
+      .doc-container { box-shadow: none; padding: 0; }
+      #content pre { white-space: pre-wrap; }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header-bar">
-      <div>
-        <div class="badge" id="question-badge" style="display: none;"></div>
-        <div class="skeleton skeleton-badge" id="badge-skeleton"></div>
-      </div>
-      <div class="header-actions">
-        <a class="back-link" href="../">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-          전체 질문
-        </a>
-        <button id="theme-toggle" class="theme-toggle-btn" aria-label="테마 전환" type="button">
-          <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-          </svg>
-          <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
 
-    <h1 id="question-title"><div class="skeleton skeleton-title"></div></h1>
-    <hr />
-    <div id="content">
-      <div class="skeleton skeleton-line" style="width: 90%;"></div>
-      <div class="skeleton skeleton-line" style="width: 100%;"></div>
-      <div class="skeleton skeleton-line" style="width: 78%;"></div>
-      <div class="skeleton skeleton-line" style="width: 45%; margin-top: 24px;"></div>
-      <div class="skeleton skeleton-line" style="width: 95%;"></div>
-      <div class="skeleton skeleton-line" style="width: 82%;"></div>
+  <!-- 상단 내비게이션 바 -->
+  <header class="top-nav">
+    <nav class="nav-breadcrumbs" aria-label="경로 탐색">
+      <a class="nav-brand" href="../">
+        <span class="brand-dot"></span>
+        <span>매일메일</span>
+      </a>
+      <span class="nav-separator">/</span>
+      <a class="nav-link" href="../">질문 목록</a>
+      <span class="nav-separator">/</span>
+      <span class="nav-current" id="nav-q-id">...</span>
+    </nav>
+
+    <div class="nav-actions">
+      <button type="button" class="btn" id="btn-share" title="질문 링크 복사">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+        </svg>
+        <span>공유</span>
+      </button>
+
+      <button id="theme-toggle" class="btn btn-icon-only" aria-label="테마 전환" type="button" title="테마 전환">
+        <svg class="moon-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg class="sun-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
     </div>
-  </div>
+  </header>
+
+  <!-- 문서 지면 -->
+  <main class="page-wrapper">
+    <article class="doc-container">
+      <header class="doc-header">
+        <div class="doc-meta">프론트엔드 면접 질문</div>
+        <h1 id="question-title">
+          <div class="skeleton skeleton-title"></div>
+        </h1>
+      </header>
+
+      <!-- 본문 영역 -->
+      <section id="content">
+        <div class="skeleton skeleton-line" style="width: 85%;"></div>
+        <div class="skeleton skeleton-line" style="width: 100%;"></div>
+        <div class="skeleton skeleton-line" style="width: 72%;"></div>
+        <div class="skeleton skeleton-line" style="width: 40%; margin-top: 28px;"></div>
+        <div class="skeleton skeleton-line" style="width: 90%;"></div>
+        <div class="skeleton skeleton-line" style="width: 80%;"></div>
+      </section>
+
+      <!-- 이전/다음 질문 네비게이션 -->
+      <nav class="doc-pagination" id="doc-pagination" style="display: none;" aria-label="이전문서/다음문서 탐색">
+        <a id="prev-link" class="page-nav-card prev" href="#" style="visibility: hidden;">
+          <span class="page-nav-sub">← 이전 질문</span>
+          <span class="page-nav-title" id="prev-title"></span>
+        </a>
+        <a id="next-link" class="page-nav-card next" href="#" style="visibility: hidden;">
+          <span class="page-nav-sub">다음 질문 →</span>
+          <span class="page-nav-title" id="next-title"></span>
+        </a>
+      </nav>
+    </article>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
+    function initTheme() {
+      const toggleBtn = document.getElementById('theme-toggle');
+      toggleBtn.addEventListener('click', () => {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const next = isDark ? 'light' : 'dark';
+        if (next === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.removeAttribute('data-theme');
+        }
+        try { localStorage.setItem('theme', next); } catch (e) {}
+      });
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
     async function loadContent() {
       const params = new URLSearchParams(window.location.search);
       let q = params.get('q') || 'fe-1';
       if (!q.startsWith('fe-')) q = 'fe-' + q;
+
+      document.getElementById('nav-q-id').innerText = q.toUpperCase();
 
       try {
         const [tocRes, contentRes] = await Promise.all([
@@ -543,25 +665,48 @@
         const tocText = await tocRes.text();
         const contentMd = await contentRes.text();
 
-        const regex = new RegExp(`-\\s*\\[(.*?)\\]\\(contents/${q}\\.md\\)`);
-        const match = tocText.match(regex);
-        const questionTitle = match ? match[1] : q;
+        const allQuestions = [...tocText.matchAll(/-\s*\[(.*?)\]\(contents\/(fe-\d+)\.md\)/g)]
+          .map(([, title, id]) => ({ id, title }));
 
-        document.getElementById('badge-skeleton').style.display = 'none';
-        const badgeEl = document.getElementById('question-badge');
-        badgeEl.style.display = 'inline-block';
-        badgeEl.innerText = q.toUpperCase();
+        const currentIndex = allQuestions.findIndex(item => item.id === q);
+        const currentTitle = currentIndex !== -1 ? allQuestions[currentIndex].title : q;
 
-        document.getElementById('question-title').innerText = questionTitle;
-        document.title = `${questionTitle} - 매일메일`;
+        document.getElementById('question-title').innerText = currentTitle;
+        document.title = `${currentTitle} - 매일메일`;
 
         document.getElementById('content').innerHTML = marked.parse(contentMd);
         Prism.highlightAll();
         addCopyButtons();
+
+        if (currentIndex !== -1) {
+          const paginationEl = document.getElementById('doc-pagination');
+          paginationEl.style.display = 'grid';
+
+          if (currentIndex > 0) {
+            const prev = allQuestions[currentIndex - 1];
+            const prevLink = document.getElementById('prev-link');
+            prevLink.href = `?q=${prev.id}`;
+            document.getElementById('prev-title').innerText = prev.title;
+            prevLink.style.visibility = 'visible';
+          }
+
+          if (currentIndex < allQuestions.length - 1) {
+            const next = allQuestions[currentIndex + 1];
+            const nextLink = document.getElementById('next-link');
+            nextLink.href = `?q=${next.id}`;
+            document.getElementById('next-title').innerText = next.title;
+            nextLink.style.visibility = 'visible';
+          }
+        }
+
       } catch (err) {
-        document.getElementById('badge-skeleton').style.display = 'none';
-        document.getElementById('question-title').innerText = "오류가 발생했습니다";
-        document.getElementById('content').innerHTML = `<p style="color: red;">${err.message}</p>`;
+        document.getElementById('question-title').innerText = "질문을 불러올 수 없습니다";
+        document.getElementById('content').innerHTML = `
+          <div class="doc-error">
+            <p class="doc-error-title">오류: ${err.message}</p>
+            <p class="doc-error-hint">질문 번호를 다시 확인해주세요.</p>
+          </div>
+        `;
       }
     }
 
@@ -581,13 +726,13 @@
           try {
             const code = pre.querySelector('code')?.innerText || pre.innerText;
             await navigator.clipboard.writeText(code);
-            copyBtn.innerText = '복사됨!';
+            copyBtn.innerText = '복사됨';
             copyBtn.classList.add('copied');
 
             setTimeout(() => {
               copyBtn.innerText = '복사';
               copyBtn.classList.remove('copied');
-            }, 2000);
+            }, 1800);
           } catch (err) {
             copyBtn.innerText = '실패';
           }
@@ -597,27 +742,14 @@
       });
     }
 
-    function initTheme() {
-      const savedTheme = localStorage.getItem('theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const theme = savedTheme || (prefersDark ? 'dark' : 'light');
-
-      if (theme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
+    document.getElementById('btn-share').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        showToast('질문 주소가 복사되었습니다.');
+      } catch (e) {
+        showToast('주소 복사에 실패했습니다.');
       }
-
-      document.getElementById('theme-toggle').addEventListener('click', () => {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const nextTheme = isDark ? 'light' : 'dark';
-
-        if (nextTheme === 'dark') {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        } else {
-          document.documentElement.removeAttribute('data-theme');
-        }
-        localStorage.setItem('theme', nextTheme);
-      });
-    }
+    });
 
     initTheme();
     loadContent();
