@@ -437,18 +437,33 @@
       text-overflow: ellipsis;
     }
 
-    /* 패널의 스크롤 영역에 잘리지 않도록 화면 기준으로 띄운다 */
+    .cat-select { position: relative; }
+
+    /* 패널이 열린 목록을 자르지 않게 한다 */
+    .side:has(.cat-menu:not([hidden])) { overflow: visible; }
+
+    /* 버튼 기준으로 배치해 스크롤할 때 브라우저가 버튼과 함께 움직인다. 상단 바 아래로 지나가도록 z-index는 바보다 낮다 */
     .cat-menu {
-      position: fixed;
-      z-index: 150;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 50;
+      width: max-content;
+      min-width: 100%;
       max-width: calc(100vw - 24px);
       margin: 0;
       padding: 4px;
       overflow-y: auto;
+      overscroll-behavior: contain;
       list-style: none;
       border-radius: 2px;
       background: var(--bg-paper);
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), 0 12px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .cat-menu.open-up {
+      top: auto;
+      bottom: calc(100% + 4px);
     }
 
     .cat-option {
@@ -1241,6 +1256,7 @@
       }
       .stat-count { font-size: 15px; font-weight: 700; color: var(--text-main); }
       .star-filter { width: auto; margin: 0; background: var(--bg-hover); }
+      .cat-menu { left: auto; right: 0; }
     }
 
     @media (max-width: 640px) {
@@ -2342,36 +2358,27 @@
       }));
     }
 
-    function positionCategoryMenu() {
+    // 위치는 CSS가 버튼에 붙여 두므로, 어느 쪽으로 얼마나 펼칠지만 정한다
+    function placeCategoryMenu() {
       const { categoryMenu: menu, categoryTrigger: trigger } = els;
       const GAP = 4;
       const EDGE = 12;
       const NAV_HEIGHT = 52;
       const rect = trigger.getBoundingClientRect();
 
-      // 버튼이 상단 바 뒤나 화면 밖으로 나가면 붙어 있을 곳이 없으니 닫는다
-      if (rect.bottom <= NAV_HEIGHT || rect.top >= innerHeight) {
-        closeCategoryMenu();
-        return;
-      }
-
-      const { scrollTop } = menu;
-      menu.style.minWidth = `${rect.width}px`;
       menu.style.maxHeight = '';
       const below = innerHeight - rect.bottom - GAP - EDGE;
-      const above = rect.top - GAP - EDGE;
+      const above = rect.top - NAV_HEIGHT - GAP - EDGE;
       const openUp = menu.offsetHeight > below && above > below;
+      menu.classList.toggle('open-up', openUp);
       menu.style.maxHeight = `${openUp ? above : below}px`;
-      menu.style.top = `${openUp ? rect.top - GAP - menu.offsetHeight : rect.bottom + GAP}px`;
-      menu.style.left = `${Math.max(EDGE, Math.min(rect.left, innerWidth - menu.offsetWidth - EDGE))}px`;
-      menu.scrollTop = scrollTop;
     }
 
     function openCategoryMenu(focusLast = false) {
       const { categoryMenu: menu, categoryTrigger: trigger } = els;
       menu.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
-      positionCategoryMenu();
+      placeCategoryMenu();
 
       const items = [...menu.children];
       (focusLast ? items.at(-1) : items.find((item) => item.getAttribute('aria-selected') === 'true') || items[0]).focus();
@@ -2441,12 +2448,9 @@
         if (e.relatedTarget && !e.relatedTarget.closest('.cat-select')) closeCategoryMenu();
       });
 
-      // 화면이 움직여도 닫지 않고 버튼을 따라간다
-      const followTrigger = (e) => {
-        if (!menu.hidden && e.target !== menu) positionCategoryMenu();
-      };
-      addEventListener('scroll', followTrigger, true);
-      addEventListener('resize', followTrigger);
+      addEventListener('resize', () => {
+        if (!menu.hidden) placeCategoryMenu();
+      });
     }
 
     function createRow(q) {
