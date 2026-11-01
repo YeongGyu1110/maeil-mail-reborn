@@ -37,6 +37,8 @@
       --rule: #d5dae0;
       --rule-strong: #8a939d;
       --paper-shadow: 0 1px 2px rgba(20, 23, 26, 0.06), 0 4px 16px rgba(20, 23, 26, 0.05);
+      --scrollbar: #b6bdc5;
+      --scrollbar-hover: #8a939d;
 
       --text-main: #14171a;
       --text-sub: #333d4b;
@@ -74,6 +76,8 @@
       --rule: #303035;
       --rule-strong: #6c727b;
       --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --scrollbar: #3a3a3f;
+      --scrollbar-hover: #5a5a61;
 
       --text-main: #f0f2f5;
       --text-sub: #c4c8cf;
@@ -103,6 +107,34 @@
     }
 
     * { box-sizing: border-box; }
+
+    /* 문서 길이에 따라 스크롤바가 생기거나 사라져도 화면이 옆으로 밀리지 않게 자리를 비워 둔다 */
+    html { scrollbar-gutter: stable; }
+
+    /* 스크롤바: 화살표 없이 얇고 각진 막대만 남긴다 */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track { background: transparent; }
+    html::-webkit-scrollbar-track { background: var(--bg-canvas); }
+    ::-webkit-scrollbar-corner { background: transparent; }
+
+    ::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 2px;
+      background: var(--scrollbar) padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover) padding-box; }
+
+    @supports not selector(::-webkit-scrollbar) {
+      html {
+        scrollbar-width: thin;
+        scrollbar-color: var(--scrollbar) transparent;
+      }
+    }
 
     body {
       margin: 0;
