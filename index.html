@@ -955,7 +955,60 @@
       flex-direction: column;
     }
 
-    .repo-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+    .repo-dialog::backdrop,
+    .confirm-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+    /* 확인 창 */
+    .confirm-dialog {
+      width: min(400px, calc(100% - 32px));
+      padding: 24px;
+      border: none;
+      border-radius: 2px;
+      background: var(--bg-paper);
+      color: var(--text-sub);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+    }
+
+    .confirm-dialog h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .confirm-dialog p {
+      margin: 0;
+      font-size: 14px;
+      word-break: keep-all;
+    }
+
+    .confirm-dialog .confirm-warning {
+      margin-top: 8px;
+      font-weight: 600;
+      color: var(--danger);
+    }
+
+    .confirm-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+      margin-top: 20px;
+    }
+
+    .btn-danger {
+      background-color: var(--danger);
+      color: #ffffff;
+    }
+
+    [data-theme="dark"] .btn-danger { color: #1f0d0d; }
+
+    .btn-danger:hover:not(:disabled) {
+      background-color: var(--danger);
+      color: #ffffff;
+      filter: brightness(1.08);
+    }
+
+    [data-theme="dark"] .btn-danger:hover:not(:disabled) { color: #1f0d0d; }
 
     .dialog-head {
       display: flex;
@@ -1389,6 +1442,16 @@
     </div>
   </dialog>
 
+  <dialog id="logout-dialog" class="confirm-dialog" aria-labelledby="logout-dialog-title">
+    <h2 id="logout-dialog-title">로그아웃할까요?</h2>
+    <p>이 기기에 보관한 GitHub 연결 정보를 지워요. 다시 로그인하면 이어서 볼 수 있어요.</p>
+    <p id="logout-warning" class="confirm-warning" hidden>저장하지 않은 메모는 사라져요.</p>
+    <div class="confirm-buttons">
+      <button type="button" class="btn" data-action="logout-cancel" autofocus>취소</button>
+      <button type="button" class="btn btn-danger" data-action="logout-confirm">로그아웃</button>
+    </div>
+  </dialog>
+
   <template id="row-template">
     <li class="q-row" data-state="new">
       <div class="q-main">
@@ -1474,6 +1537,8 @@
       categoryTrigger: document.getElementById('category-trigger'),
       categoryValue: document.getElementById('category-value'),
       categoryMenu: document.getElementById('category-menu'),
+      logoutDialog: document.getElementById('logout-dialog'),
+      logoutWarning: document.getElementById('logout-warning'),
       starFilter: document.getElementById('star-filter'),
       starCount: document.getElementById('star-count'),
       resultCount: document.getElementById('result-count'),
@@ -1839,12 +1904,28 @@
       }
     }
 
+    function askLogout() {
+      els.logoutWarning.hidden = !hasDirtyEditor();
+      els.logoutDialog.showModal();
+    }
+
     async function logout() {
-      if (hasDirtyEditor() && !confirm('저장하지 않은 메모가 있어요. 로그아웃할까요?')) return;
       await store.flush().catch(() => {});
       removeStore('localStorage', githubTokenKey(currentUser.uid));
       await fb.auth.signOut(fb.authInstance);
     }
+
+    // 로그아웃 버튼은 질문을 다 불러오기 전에도 보이므로 bindEvents를 기다리지 않고 연결한다
+    els.logoutDialog.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      // 바깥(배경)을 누르면 닫는다
+      if (e.target === els.logoutDialog || action === 'logout-cancel') {
+        els.logoutDialog.close();
+      } else if (action === 'logout-confirm') {
+        els.logoutDialog.close();
+        logout();
+      }
+    });
 
     // ---------- GitHub ----------
 
@@ -2210,7 +2291,7 @@
         button.type = 'button';
         button.className = 'btn';
         button.textContent = '로그아웃';
-        button.addEventListener('click', logout);
+        button.addEventListener('click', askLogout);
         els.account.append(info, button);
       }
     }
@@ -2735,7 +2816,7 @@
       });
 
       document.addEventListener('keydown', (e) => {
-        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || els.repoDialog.open) return;
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
         if (e.target.closest('input, textarea, select, [contenteditable]')) return;
         e.preventDefault();
         els.search.focus();
