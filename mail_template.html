@@ -1,91 +1,80 @@
 <!DOCTYPE html>
-<html data-theme="light">
+<html lang="ko">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="color-scheme" content="light"/>
+  <meta name="supported-color-schemes" content="light"/>
   <title>매일메일 - 기술 면접 질문</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f6f8fa;">
-  <div style="height: 100%; width: 100%; font-family: Arial, sans-serif; user-select: none; padding: 20px 0;">
-    <div style="
-          background-color: #ffffff;
-          border-radius: 8px;
-          border: 1px solid #e1e1e1;
-          max-width: 480px;
-          width: 100%;
-          margin: 0 auto;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        ">
-      <div style="padding: 21px 16px 16px 40px; line-height: 1;">
-        <span style="font-size: 20px; font-weight: 800; color: #17C881; letter-spacing: -0.5px;">
-          매일메일
-        </span>
-      </div>
-
-      <section style="text-align: center;">
-        <div style="
-              background-color: #17C881;
-              background: linear-gradient(135deg, #17C881 0%, #0fa868 100%);
-              padding: 50px 30px;
-            ">
-          <p style="font-size: 14px; color: #EEF8F5; font-weight: bold; margin: 0 auto 16px auto; width: fit-content;">
-            오늘의 질문 #{{question_num}}
-          </p>
-          <div>
-            <p style="
-                font-size: 20px;
-                color: #ffffff;
-                font-weight: 600;
-                margin: 0;
-                line-height: 1.5;
-                text-align: center;
-                word-break: keep-all;
-              ">
-              {{question_title}}
-            </p>
-          </div>
-        </div>
-
-        <!-- 안내 문구 -->
-        <p style="
-            font-size: 14px;
-            color: #666666;
-            text-align: center;
-            word-break: keep-all;
-            line-height: 1.6;
-            padding: 35px 30px 20px 30px;
-            margin: 0;
-          ">
-          답변을 머릿속으로 충분히 정리해 보셨나요?<br/>
-          아래 버튼을 눌러 모범 답안을 확인해 보세요!
-        </p>
-
-        <!-- 뷰어로 이동하는 버튼 -->
-        <div style="margin: 0 auto 40px auto; width: fit-content;">
-          <a href="{{viewer_url}}" target="_blank" style="
-              display: inline-block;
-              padding: 12px 30px;
-              background-color: #17C881;
-              color: white;
-              text-decoration: none;
-              border-radius: 6px;
-              font-size: 16px;
-              font-weight: bold;
-              box-shadow: 0 2px 5px rgba(23, 200, 129, 0.3);
-            ">
-            답변 확인하기 ➔
-          </a>
-        </div>
-
-        <div style="height: 1px; width: 88%; background: #eee; margin: 0 auto;"></div>
-
-        <div style="padding: 20px; font-size: 12px; color: #999; line-height: 1.5; word-break: keep-all;">
-          매일 새벽 5시 7분, GitHub Actions로 자동 발송되는 면접 질문입니다.
-          <br/>
-          서버 대기열 상황에 따라 오전 8~9시경으로 다소 지연되어 도착할 수 있습니다.
-        </div>
-      </section>
-    </div>
+<!-- 메일 앱은 CSS 지원이 제각각이라 표 레이아웃과 인라인 스타일만 쓴다 -->
+<body style="margin: 0; padding: 0; background-color: #e9ecef;">
+  <!-- 받은편지함 미리보기 문구 -->
+  <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; font-size: 1px; line-height: 1px; color: #e9ecef;">
+    오늘의 질문 #{{question_num}} · 답변을 머릿속으로 정리한 뒤 모범 답안을 확인해 보세요.
   </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#e9ecef" style="background-color: #e9ecef;">
+    <tr>
+      <td align="center" style="padding: 20px 12px 28px 12px;">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 560px; font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', sans-serif;">
+          <!-- 브랜드 -->
+          <tr>
+            <td style="padding: 0 4px 14px 4px; font-size: 14px; font-weight: 700; line-height: 1.4; color: #14171a;">
+              <span style="color: #00875a;">■</span>&nbsp;매일메일
+            </td>
+          </tr>
+
+          <!-- 문서 지면 -->
+          <tr>
+            <td bgcolor="#fdfdfd" style="padding: 32px 28px 36px 28px; background-color: #fdfdfd; border-radius: 2px; box-shadow: 0 1px 2px rgba(20, 23, 26, 0.06), 0 4px 16px rgba(20, 23, 26, 0.05);">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <!-- 문서 머리 -->
+                <tr>
+                  <td style="padding-bottom: 12px; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #6b7682;">
+                    프론트엔드 면접 질문 · 오늘의 질문 #{{question_num}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 24px; border-bottom: 1px solid #8a939d; font-size: 23px; font-weight: 700; line-height: 1.45; letter-spacing: -0.02em; color: #14171a; word-break: keep-all; overflow-wrap: break-word;">
+                    {{question_title}}
+                  </td>
+                </tr>
+
+                <!-- 안내 문구 -->
+                <tr>
+                  <td style="padding: 24px 0 24px 0; font-size: 15px; line-height: 1.8; color: #333d4b; word-break: keep-all;">
+                    답변을 머릿속으로 충분히 정리해 보셨나요?<br/>
+                    아래 버튼을 눌러 모범 답안을 확인해 보세요.
+                  </td>
+                </tr>
+
+                <!-- 뷰어로 이동하는 버튼 -->
+                <tr>
+                  <td align="left">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td bgcolor="#00875a" style="background-color: #00875a; border-radius: 3px;">
+                          <a href="{{viewer_url}}" target="_blank" style="display: inline-block; padding: 11px 18px; font-size: 14px; font-weight: 700; line-height: 1.4; color: #ffffff; text-decoration: none;">답변 확인하기 →</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 발송 안내 -->
+          <tr>
+            <td style="padding: 16px 4px 0 4px; font-size: 12px; line-height: 1.6; color: #6b7682; word-break: keep-all;">
+              매일 새벽 5시 7분, GitHub Actions로 자동 발송되는 면접 질문입니다.<br/>
+              서버 대기열 상황에 따라 오전 8~9시경으로 다소 지연되어 도착할 수 있습니다.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
