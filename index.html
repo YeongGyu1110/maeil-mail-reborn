@@ -2253,7 +2253,7 @@
 
       // send_mail.py와 같은 형식: - [질문](contents/fe-1.md)
       const questions = [...toc.matchAll(/-\s*\[(.*?)\]\(contents\/(fe-\d+)\.md\)/g)]
-        .map(([, title, id]) => ({ id, title, category: categoryOf[id] || '' }));
+        .map(([, title, id]) => ({ id, title: title.replace(/\\([!-/:-@[-`{-~])/g, '$1'), category: categoryOf[id] || '' }));
 
       // progress.txt는 지금까지 발송한 질문 수
       const sent = parseInt(progress, 10);

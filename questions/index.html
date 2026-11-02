@@ -698,7 +698,7 @@
         const contentMd = await contentRes.text();
 
         const allQuestions = [...tocText.matchAll(/-\s*\[(.*?)\]\(contents\/(fe-\d+)\.md\)/g)]
-          .map(([, title, id]) => ({ id, title }));
+          .map(([, title, id]) => ({ id, title: title.replace(/\\([!-/:-@[-`{-~])/g, '$1') }));
 
         const currentIndex = allQuestions.findIndex(item => item.id === q);
         const currentTitle = currentIndex !== -1 ? allQuestions[currentIndex].title : q;
