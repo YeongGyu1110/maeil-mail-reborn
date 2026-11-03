@@ -2224,8 +2224,8 @@
 
     // ---------- 질문 목록 ----------
 
-    async function fetchText(url) {
-      const res = await fetch(url);
+    async function fetchText(url, options) {
+      const res = await fetch(url, options);
       if (!res.ok) throw new Error(`${url}: ${res.status}`);
       return res.text();
     }
@@ -2234,7 +2234,8 @@
       const [toc, categoryToc, progress] = await Promise.all([
         fetchText('frontend/toc.md'),
         fetchText('frontend/toc-category.md').catch(() => ''),
-        fetchText('progress.txt').catch(() => ''),
+        // GitHub Pages가 10분 캐시를 걸어 두므로, 발송 직후에도 오늘 질문이 바뀌도록 서버에 다시 확인한다
+        fetchText('progress.txt', { cache: 'no-cache' }).catch(() => ''),
       ]);
 
       const categoryOf = {};
