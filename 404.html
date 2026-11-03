@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>페이지를 찾을 수 없어요 - 매일메일</title>
+
+  <!-- 테마 깜빡임 방지 (localStorage는 테마 전용) -->
+  <script>
+    (function () {
+      try {
+        const saved = localStorage.getItem('theme');
+        const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+  <style>
+    :root {
+      /* [라이트 모드] 책상(캔버스) 위에 놓인 흰 종이 */
+      --bg-canvas: #e9ecef;
+      --bg-paper: #fdfdfd;
+      --bg-hover: #dfe3e7;
+      --rule-strong: #8a939d;
+      --paper-shadow: 0 1px 2px rgba(20, 23, 26, 0.06), 0 4px 16px rgba(20, 23, 26, 0.05);
+
+      --text-main: #14171a;
+      --text-sub: #333d4b;
+      --text-muted: #6b7682;
+
+      --primary: #00875a;
+      --code-inline-bg: #eef0f3;
+    }
+
+    [data-theme="dark"] {
+      /* [다크 모드] 무채색 흑연 캔버스 위의 짙은 종이 */
+      --bg-canvas: #111113;
+      --bg-paper: #1a1a1c;
+      --bg-hover: #26262a;
+      --rule-strong: #6c727b;
+      --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+      --text-main: #f0f2f5;
+      --text-sub: #c4c8cf;
+      --text-muted: #838a94;
+
+      --primary: #00c47d;
+      --code-inline-bg: #26262a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scrollbar-gutter: stable; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.75;
+      letter-spacing: -0.015em;
+      color: var(--text-sub);
+      background-color: var(--bg-canvas);
+      transition: background-color 0.15s ease, color 0.15s ease;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 1px;
+    }
+
+    /* 상단 내비게이션 바: 캔버스와 같은 면, 구분선 없음 */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      padding: 0 24px;
+      background-color: var(--bg-canvas);
+    }
+
+    .nav-breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+
+    .nav-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      color: var(--text-main);
+      text-decoration: none;
+    }
+
+    .nav-brand .brand-dot {
+      width: 7px;
+      height: 7px;
+      background-color: var(--primary);
+      border-radius: 1px;
+    }
+
+    .nav-separator {
+      color: var(--rule-strong);
+      user-select: none;
+    }
+
+    .nav-current {
+      color: var(--text-main);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* 테두리 없는 텍스트형 버튼 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 3px;
+      background-color: transparent;
+      color: var(--text-sub);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-main);
+    }
+
+    .btn-icon-only {
+      width: 32px;
+      padding: 0;
+    }
+
+    .btn-primary {
+      height: 38px;
+      padding: 0 16px;
+      background-color: var(--primary);
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    [data-theme="dark"] .btn-primary { color: #0c1512; }
+
+    .btn-primary:hover {
+      background-color: var(--primary);
+      color: #ffffff;
+      filter: brightness(1.08);
+    }
+
+    [data-theme="dark"] .btn-primary:hover { color: #0c1512; }
+
+    .sun-icon { display: none; }
+    .moon-icon { display: block; }
+    [data-theme="dark"] .sun-icon { display: block; }
+    [data-theme="dark"] .moon-icon { display: none; }
+
+    /* 문서 지면: 테두리 대신 면 대비와 옅은 그림자로 종이를 구분 */
+    .page-wrapper {
+      max-width: 820px;
+      margin: 20px auto 72px;
+      padding: 0 20px;
+    }
+
+    .doc-container {
+      background: var(--bg-paper);
+      border-radius: 2px;
+      box-shadow: var(--paper-shadow);
+      padding: 56px 72px 56px;
+    }
+
+    .doc-header {
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--rule-strong);
+      margin-bottom: 28px;
+    }
+
+    .doc-meta {
+      margin-bottom: 18px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.01em;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 27px;
+      font-weight: 700;
+      line-height: 1.45;
+      letter-spacing: -0.025em;
+      color: var(--text-main);
+      word-break: keep-all;
+    }
+
+    .doc-body p {
+      margin: 0 0 18px;
+      font-size: 16px;
+      line-height: 1.85;
+      word-break: keep-all;
+    }
+
+    .requested-path {
+      display: inline-block;
+      max-width: 100%;
+      padding: 2px 6px;
+      border-radius: 2px;
+      background: var(--code-inline-bg);
+      color: var(--text-main);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13.5px;
+      overflow-wrap: anywhere;
+    }
+
+    .doc-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 28px;
+    }
+
+    @media (max-width: 640px) {
+      .top-nav { padding: 0 12px; }
+      .page-wrapper { margin: 0; padding: 0; }
+      .doc-container {
+        border-radius: 0;
+        box-shadow: none;
+        padding: 32px 20px 28px;
+      }
+      h1 { font-size: 23px; }
+      .doc-body p { font-size: 15.5px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 상단 내비게이션 바 -->
+  <header class="top-nav">
+    <nav class="nav-breadcrumbs" aria-label="경로 탐색">
+      <a class="nav-brand home-link" href="/maeil-mail-reborn/">
+        <span class="brand-dot"></span>
+        <span>매일메일</span>
+      </a>
+      <span class="nav-separator">/</span>
+      <span class="nav-current">페이지 없음</span>
+    </nav>
+
+    <button id="theme-toggle" class="btn btn-icon-only" aria-label="테마 전환" type="button" title="테마 전환">
+      <svg class="moon-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+      <svg class="sun-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+    </button>
+  </header>
+
+  <!-- 문서 지면 -->
+  <main class="page-wrapper">
+    <article class="doc-container">
+      <header class="doc-header">
+        <div class="doc-meta">404 · 페이지 없음</div>
+        <h1>페이지를 찾을 수 없어요</h1>
+      </header>
+
+      <section class="doc-body">
+        <p>요청한 주소 <span id="requested-path" class="requested-path"></span>에 해당하는 페이지가 없어요.</p>
+        <p>주소가 바뀌었거나 잘못 입력됐을 수 있어요. 질문 목록에서 다시 찾아보세요.</p>
+      </section>
+
+      <div class="doc-actions">
+        <a class="btn btn-primary home-link" href="/maeil-mail-reborn/">질문 목록으로</a>
+      </div>
+    </article>
+  </main>
+
+  <script>
+    // 이 페이지는 어떤 깊이의 주소에서도 열리므로 상대 경로 대신 사이트 시작 경로를 계산한다.
+    // github.io 프로젝트 사이트면 첫 경로(/저장소이름/), 그 밖(로컬, 커스텀 도메인)이면 /.
+    const base = location.hostname.endsWith('.github.io')
+      ? `/${location.pathname.split('/')[1]}/`
+      : '/';
+
+    for (const link of document.querySelectorAll('.home-link')) link.href = base;
+
+    const icon = document.createElement('link');
+    icon.rel = 'icon';
+    icon.type = 'image/png';
+    icon.href = `${base}favicon.png`;
+    document.head.append(icon);
+
+    let path = location.pathname;
+    try { path = decodeURIComponent(path); } catch (e) { /* 잘못 인코딩된 주소는 그대로 보여준다 */ }
+    document.getElementById('requested-path').textContent = path;
+
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  </script>
+</body>
+</html>
