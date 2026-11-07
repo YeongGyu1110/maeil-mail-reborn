@@ -1,3 +1,4 @@
+import html
 import os
 import re
 import smtplib
@@ -21,7 +22,9 @@ def get_questions():
     content = Path(TOC_FILE).read_text(encoding='utf-8')
     # - [질문](contents/fe-1.md) 매칭
     pattern = re.compile(r'-\s*\[(.*?)\]\(contents/(fe-\d+)\.md\)')
-    return pattern.findall(content)  # [ (질문제목, "fe-1"), ... ]
+    # 제목의 마크다운 이스케이프(\<a> 등)를 벗긴다
+    return [(re.sub(r'\\([!-/:-@\[-`{-~])', r'\1', title), file_id)
+            for title, file_id in pattern.findall(content)]  # [ (질문제목, "fe-1"), ... ]
 
 def get_current_index():
     if not Path(PROGRESS_FILE).exists():
@@ -43,12 +46,12 @@ def main():
         return
 
     title, file_id = questions[idx]
-    viewer_url = f"{GITHUB_PAGES_URL}/?q={file_id}" if GITHUB_PAGES_URL else "#"
+    viewer_url = f"{GITHUB_PAGES_URL}/questions/?q={file_id}" if GITHUB_PAGES_URL else "#"
 
     # HTML 템플릿 치환
     template = Path(TEMPLATE_FILE).read_text(encoding='utf-8')
     html_body = template.replace('{{question_num}}', str(idx + 1))
-    html_body = html_body.replace('{{question_title}}', title)
+    html_body = html_body.replace('{{question_title}}', html.escape(title))
     html_body = html_body.replace('{{viewer_url}}', viewer_url)
 
     # 이메일 메시지 생성
