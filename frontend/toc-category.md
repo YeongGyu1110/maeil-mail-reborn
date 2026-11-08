@@ -36,6 +36,7 @@
 - [제네레이터에 대해 설명해주세요.](contents/fe-136.md)
 - [얕은 복사와 깊은 복사의 차이점에 대해서 설명해주세요.](contents/fe-151.md)
 - [== 연산자와 === 연산자의 차이점, 그리고 암묵적 타입 변환에 대해서 설명해주세요.](contents/fe-152.md)
+- [자바스크립트의 Map, Set, WeakMap에 대해서 설명해주세요.](contents/fe-174.md)
 
 ## React 핵심 개념과 렌더링
 컴포넌트, 상태, 훅, 렌더링 흐름처럼 리액트의 기본 작동 원리를 다루는 질문들입니다.
@@ -63,6 +64,10 @@
 - [React의 Error Boundary는 왜 비동기 에러를 잡지 못하나요?](contents/fe-147.md)
 - [React 19에서 추가된 주요 기능에 대해서 설명해주세요.](contents/fe-163.md)
 - [React Compiler란 무엇인가요?](contents/fe-164.md)
+- [Context API를 사용할 때 발생하는 리렌더링 문제와 해결 방법을 설명해주세요.](contents/fe-170.md)
+- [커스텀 훅이란 무엇이며, 언제 사용하나요?](contents/fe-171.md)
+- [합성 컴포넌트(Compound Component) 패턴과 Headless UI에 대해서 설명해주세요.](contents/fe-172.md)
+- [리액트의 Portal이란 무엇이며, 언제 사용하나요?](contents/fe-173.md)
 
 ## Next.js와 현대적인 React 아키텍처
 SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케이션을 더 큰 구조로 보는 질문들을 모았습니다.
@@ -81,6 +86,8 @@ SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케
 - [클라이언트 사이드 라우팅이 동작하는 과정에 대해 설명해주세요.](contents/fe-126.md)
 - [Progressive Partial Rendering(PPR)에 대해서 설명해주세요.](contents/fe-133.md)
 - [Next.js Middleware에 대해서 설명해주세요.](contents/fe-149.md)
+- [CSR, SSR, SSG, ISR의 차이점에 대해서 설명해주세요.](contents/fe-169.md)
+- [마이크로 프론트엔드란 무엇인가요?](contents/fe-184.md)
 
 ## 브라우저, DOM과 Web API
 브라우저 렌더링 과정, DOM 이벤트, 저장소, 캐시, 사용자 에이전트처럼 실행 환경 자체를 다루는 질문들입니다.
@@ -129,6 +136,8 @@ SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케
 - [CSS 명시도(Specificity)에 대해서 설명해주세요.](contents/fe-114.md)
 - [퍼포먼스를 분석할 때 Chrome DevTools에서 어떤 지표를 체크해야 하나요?](contents/fe-150.md)
 - [긴 목록을 렌더링할 때 사용하는 가상화(Virtualization)에 대해서 설명해주세요.](contents/fe-159.md)
+- [CSS position 속성의 값들에 대해서 설명해주세요.](contents/fe-178.md)
+- [반응형 웹을 구현하는 방법과 미디어 쿼리, 컨테이너 쿼리의 차이점을 설명해주세요.](contents/fe-179.md)
 
 ## TypeScript, 번들링과 생태계 도구
 타입 시스템, 모듈 시스템, 번들러, 패키지 매니저, 협업 도구처럼 개발 생산성을 좌우하는 질문들입니다.
@@ -159,6 +168,9 @@ SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케
 - [타입스크립트의 유틸리티 타입에 대해서 설명해주세요.](contents/fe-161.md)
 - [타입스크립트의 타입 좁히기(Type Narrowing)에 대해서 설명해주세요.](contents/fe-162.md)
 - [Vite는 webpack과 무엇이 다르며, 개발 서버가 빠른 이유는 무엇인가요?](contents/fe-168.md)
+- [소스맵(Source Map)이란 무엇인가요?](contents/fe-180.md)
+- [프론트엔드에서 환경 변수는 어떻게 관리하며, 주의할 점은 무엇인가요?](contents/fe-181.md)
+- [ESLint와 Prettier의 차이점에 대해서 설명해주세요.](contents/fe-182.md)
 
 ## 네트워크, 보안과 캐싱 전략
 HTTP 계층, 보안 헤더, 인증/인가, TLS, 캐시 정책처럼 서비스 경계면에서 자주 마주치는 주제입니다.
@@ -186,6 +198,9 @@ HTTP 계층, 보안 헤더, 인증/인가, TLS, 캐시 정책처럼 서비스 �
 - [폴링, 롱 폴링, SSE, WebSocket 등 실시간 통신 방식에 대해서 설명해주세요.](contents/fe-153.md)
 - [인증 토큰은 클라이언트의 어디에 저장해야 하나요?](contents/fe-155.md)
 - [OAuth 2.0에 대해서 설명해주세요.](contents/fe-156.md)
+- [자주 사용하는 HTTP 상태 코드에 대해서 설명해주세요.](contents/fe-175.md)
+- [REST와 GraphQL의 차이점에 대해서 설명해주세요.](contents/fe-176.md)
+- [HTTP/3와 QUIC에 대해서 설명해주세요.](contents/fe-177.md)
 
 ## 테스트, 품질과 협업 판단
 현업에서 문제를 진단하고, 테스트 전략을 세우고, 협업 속에서 의사결정하는 데 가까운 질문들입니다.
@@ -199,3 +214,4 @@ HTTP 계층, 보안 헤더, 인증/인가, TLS, 캐시 정책처럼 서비스 �
 - [단위 테스트, 통합 테스트, E2E 테스트의 차이점과 프론트엔드 테스트 전략에 대해서 설명해주세요.](contents/fe-165.md)
 - [프론트엔드 테스트에서 API를 모킹하는 방법과 MSW에 대해서 설명해주세요.](contents/fe-166.md)
 - [React Testing Library는 어떤 철학으로 테스트를 작성하도록 하나요?](contents/fe-167.md)
+- [프론트엔드 에러 모니터링은 왜 필요하며, 어떻게 하나요?](contents/fe-183.md)
