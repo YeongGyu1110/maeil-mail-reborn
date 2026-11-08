@@ -34,6 +34,8 @@
 - [커링(currying)이란 무엇인지 설명하고, 활용 예시를 들어줄 수 있나요?](contents/fe-129.md)
 - [이터러블 프로토콜에 대해 설명해주세요.](contents/fe-135.md)
 - [제네레이터에 대해 설명해주세요.](contents/fe-136.md)
+- [얕은 복사와 깊은 복사의 차이점에 대해서 설명해주세요.](contents/fe-151.md)
+- [== 연산자와 === 연산자의 차이점, 그리고 암묵적 타입 변환에 대해서 설명해주세요.](contents/fe-152.md)
 
 ## React 핵심 개념과 렌더링
 컴포넌트, 상태, 훅, 렌더링 흐름처럼 리액트의 기본 작동 원리를 다루는 질문들입니다.
@@ -59,6 +61,8 @@
 - [React의 리렌더링 과정에 대해 설명해주세요.](contents/fe-141.md)
 - [다음 리액트 코드의 실행 순서에 대해 설명해주세요.](contents/fe-144.md)
 - [React의 Error Boundary는 왜 비동기 에러를 잡지 못하나요?](contents/fe-147.md)
+- [React 19에서 추가된 주요 기능에 대해서 설명해주세요.](contents/fe-163.md)
+- [React Compiler란 무엇인가요?](contents/fe-164.md)
 
 ## Next.js와 현대적인 React 아키텍처
 SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케이션을 더 큰 구조로 보는 질문들을 모았습니다.
@@ -101,6 +105,9 @@ SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케
 - [User-Agent에 대해서 설명해주세요.](contents/fe-138.md)
 - [웹표준이 무엇인가요?](contents/fe-140.md)
 - [스택을 활용하여 브라우저의 뒤로가기/앞으로가기 기능을 구현하는 방법을 설명해주세요.](contents/fe-146.md)
+- [Web Worker와 Service Worker에 대해서 설명해주세요.](contents/fe-154.md)
+- [API 요청의 경쟁 상태(Race Condition)와 AbortController를 이용한 요청 취소에 대해서 설명해주세요.](contents/fe-157.md)
+- [무한 스크롤을 구현하는 방법과 IntersectionObserver에 대해서 설명해주세요.](contents/fe-158.md)
 
 ## CSS, UI와 사용자 경험
 레이아웃, 스타일링, 이미지, 접근성, 퍼포먼스 지표처럼 화면을 실제로 다듬는 과정과 가까운 질문들입니다.
@@ -121,6 +128,7 @@ SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케
 - [Core Web Vitals란 무엇인가요?](contents/fe-109.md)
 - [CSS 명시도(Specificity)에 대해서 설명해주세요.](contents/fe-114.md)
 - [퍼포먼스를 분석할 때 Chrome DevTools에서 어떤 지표를 체크해야 하나요?](contents/fe-150.md)
+- [긴 목록을 렌더링할 때 사용하는 가상화(Virtualization)에 대해서 설명해주세요.](contents/fe-159.md)
 
 ## TypeScript, 번들링과 생태계 도구
 타입 시스템, 모듈 시스템, 번들러, 패키지 매니저, 협업 도구처럼 개발 생산성을 좌우하는 질문들입니다.
@@ -147,6 +155,10 @@ SSR, 서버 컴포넌트, 서버 액션, BFF처럼 리액트 기반 애플리케
 - [JSON Schema에 대해 설명해주세요.](contents/fe-125.md)
 - [Node.js의 주요 특징에 대해 설명해주세요.](contents/fe-132.md)
 - [Yarn과 Yarn Berry의 차이점에 대해서 설명해주세요.](contents/fe-148.md)
+- [타입스크립트의 제네릭에 대해서 설명해주세요.](contents/fe-160.md)
+- [타입스크립트의 유틸리티 타입에 대해서 설명해주세요.](contents/fe-161.md)
+- [타입스크립트의 타입 좁히기(Type Narrowing)에 대해서 설명해주세요.](contents/fe-162.md)
+- [Vite는 webpack과 무엇이 다르며, 개발 서버가 빠른 이유는 무엇인가요?](contents/fe-168.md)
 
 ## 네트워크, 보안과 캐싱 전략
 HTTP 계층, 보안 헤더, 인증/인가, TLS, 캐시 정책처럼 서비스 경계면에서 자주 마주치는 주제입니다.
@@ -171,6 +183,9 @@ HTTP 계층, 보안 헤더, 인증/인가, TLS, 캐시 정책처럼 서비스 �
 - [XSS 공격이란 무엇이며, 프론트엔드에서 이를 방어하기 위한 방법을 설명해주세요.](contents/fe-134.md)
 - [TLS 핸드셰이크 과정에 대해 설명해주세요.](contents/fe-137.md)
 - [쿠키와 세션에 대해 설명해주세요.](contents/fe-145.md)
+- [폴링, 롱 폴링, SSE, WebSocket 등 실시간 통신 방식에 대해서 설명해주세요.](contents/fe-153.md)
+- [인증 토큰은 클라이언트의 어디에 저장해야 하나요?](contents/fe-155.md)
+- [OAuth 2.0에 대해서 설명해주세요.](contents/fe-156.md)
 
 ## 테스트, 품질과 협업 판단
 현업에서 문제를 진단하고, 테스트 전략을 세우고, 협업 속에서 의사결정하는 데 가까운 질문들입니다.
@@ -181,3 +196,6 @@ HTTP 계층, 보안 헤더, 인증/인가, TLS, 캐시 정책처럼 서비스 �
 - [결합도와 응집도에 대해 설명해주세요.](contents/fe-120.md)
 - [백엔드 API의 응답이 느려 사용성에 악영향이 발생하는 상황에서 어떻게 대응하실 건가요?](contents/fe-142.md)
 - [예상치 못하게 외부 라이브러리의 버그로 인해 기능에 문제가 생겼다면, 어떤 절차로 해결하실 건가요?](contents/fe-143.md)
+- [단위 테스트, 통합 테스트, E2E 테스트의 차이점과 프론트엔드 테스트 전략에 대해서 설명해주세요.](contents/fe-165.md)
+- [프론트엔드 테스트에서 API를 모킹하는 방법과 MSW에 대해서 설명해주세요.](contents/fe-166.md)
+- [React Testing Library는 어떤 철학으로 테스트를 작성하도록 하나요?](contents/fe-167.md)
