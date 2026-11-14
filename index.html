@@ -1573,6 +1573,8 @@
     const rows = new Map();
     const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
     const filter = { level: 'all', category: '', text: '', starred: false };
+    // 질문을 보고 돌아와도 보던 검색어와 필터가 남도록 탭 단위(sessionStorage)로 기억한다
+    const FILTER_KEY = 'maeil-filter-v1';
 
     // ---------- 브라우저 저장소 (사생활 보호 모드 등에서 실패해도 동작하도록) ----------
 
@@ -2651,6 +2653,26 @@
       }
       document.getElementById('empty').hidden = shown > 0;
       els.resultCount.textContent = `질문 ${shown}개`;
+      writeStore('sessionStorage', FILTER_KEY, filter);
+    }
+
+    // 기억해 둔 검색어와 필터를 화면에 되살린다. 없으면 뒤로가기로 브라우저가 복원한 검색창 값을 쓴다.
+    function restoreFilter() {
+      const saved = readStore('sessionStorage', FILTER_KEY);
+      if (saved) {
+        if (typeof saved.text === 'string') els.search.value = saved.text;
+        if (['all', 'new', 'review', 'done'].includes(saved.level)) filter.level = saved.level;
+        filter.starred = saved.starred === true;
+        if ([...els.category.options].some((option) => option.value === saved.category)) els.category.value = saved.category;
+      }
+      filter.text = els.search.value;
+      filter.category = els.category.value;
+
+      for (const stat of els.stats.querySelectorAll('[data-filter]')) {
+        stat.setAttribute('aria-pressed', String(stat.dataset.filter === filter.level));
+      }
+      els.starFilter.setAttribute('aria-pressed', String(filter.starred));
+      renderCategoryMenu();
     }
 
     // ---------- 학습 수준, 별표 & 메모 ----------
@@ -2973,10 +2995,9 @@
       }
       await dataReady;
 
-      // 뒤로가기로 돌아왔을 때 브라우저가 복원한 입력값을 반영한다
-      filter.text = els.search.value;
       renderCategories();
-      filter.category = els.category.value;
+      // 질문을 보고 돌아왔을 때 보던 검색어와 필터를 되살린다
+      restoreFilter();
       bindEvents();
       renderAll();
 
