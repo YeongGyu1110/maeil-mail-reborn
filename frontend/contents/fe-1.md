@@ -3,7 +3,7 @@
 예시와 함께 클로저의 동작을 설명드리면 좋을 것 같습니다.   
 
 **클로저 예시 코드**
-```javascript
+```js
 function outerFunction(outerVariable) {
   return function innerFunction(innerVariable) {
     console.log('Outer Variable: ' + outerVariable);

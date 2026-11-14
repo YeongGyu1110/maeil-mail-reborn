@@ -24,6 +24,16 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" integrity="sha384-06z5D//U/xpvxZHuUz92xBvq3DqBBFi7Up53HRrbV7Jlv7Yvh/MZ7oenfUe9iCEt" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js" integrity="sha384-D44bgYYKvaiDh4cOGlj1dbSDpSctn2FSUj118HZGmZEShZcO2v//Q5vvhNy206pp" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js" integrity="sha384-PeOqKNW/piETaCg8rqKFy+Pm6KEk7e36/5YZE5XO/OaFdO+/Aw3O8qZ9qDPKVUgx" crossorigin="anonymous"></script>
+  <!-- 답변 코드 블록에 쓰인 나머지 언어들. jsx는 javascript 뒤, tsx는 jsx와 typescript 뒤에 와야 한다 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js" integrity="sha384-nnKpKrv4RkNTjD3hNwkWsmHW8LBti5JWyAWAgeo8iC4QkFQn2Yn2Kj4mOTTNoI9V" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js" integrity="sha384-ZzE8Y/KUKzSD+AEsQQvM2PdJSEVs/T/6LE/nSetJ0ReWEE/ZgpKNBSUkTRI3Dc7E" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js" integrity="sha384-RhrmFFMb0ZCHImjFMpR/UE3VEtIVTCtNrtKQqXCzqXZNJala02N3UbVhi+qzw3CY" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js" integrity="sha384-9WmlN8ABpoFSSHvBGGjhvB3E/D8UkNB9HpLJjBQFC2VSQsM1odiQDv4NbEo+7l15" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-graphql.min.js" integrity="sha384-CfAKPApbQPXLiw2NZvvX89i+xd8VKHk+TfWhnWgmUXxl8Ct6qPN7u30+ATfxibjS" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js" integrity="sha384-/MKWdycCDliku23mP5sYXbZNuXrzgmQO/jsVxwPFn99dVOaXRyKsqDjarqpueGAp" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js" integrity="sha384-DioAMZB4yk91W6LuFit5wJDh8c5Ov09f/MBvja94y0PodMqTpTZeBeejqpRUru7D" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js" integrity="sha384-AKAiycghK0jDCjD+aavMHzDkLzRR7Yzcwh3+xL/295cvyVMe+cxQfyQC8xxGGcI8" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sass.min.js" integrity="sha384-vtpsGXKlAgv7RZuBJVa1roUNFN9110ZNgbj9o6S42DEC9jn43k4IHYtkqaoOODTS" crossorigin="anonymous"></script>
 
   <link rel="icon" href="../favicon.png" type="image/png">
 
@@ -625,7 +635,7 @@
   <main class="page-wrapper">
     <article class="doc-container">
       <header class="doc-header">
-        <div class="doc-meta">프론트엔드 면접 질문</div>
+        <div id="doc-meta" class="doc-meta">면접 질문</div>
         <h1 id="question-title">
           <div class="skeleton skeleton-title"></div>
         </h1>
@@ -679,20 +689,29 @@
       setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
+    const AREAS = {
+      fe: { dir: 'frontend', name: '프론트엔드' },
+      be: { dir: 'backend', name: '백엔드' },
+    };
+
     async function loadContent() {
       const params = new URLSearchParams(window.location.search);
       let q = params.get('q') || 'fe-1';
-      if (!q.startsWith('fe-')) q = 'fe-' + q;
+      // 접두어 없는 옛 링크(?q=1)는 프론트엔드 질문으로 본다
+      if (!/^(fe|be)-/.test(q)) q = 'fe-' + q;
 
       document.getElementById('nav-q-id').innerText = q.toUpperCase();
 
       try {
         // 질문 번호 형식만 받는다 (경로 문자로 다른 파일을 읽지 못하도록)
-        if (!/^fe-\d+$/.test(q)) throw new Error("잘못된 질문 번호입니다.");
+        const match = q.match(/^(fe|be)-\d+$/);
+        if (!match) throw new Error("잘못된 질문 번호입니다.");
+        const area = AREAS[match[1]];
+        document.getElementById('doc-meta').innerText = `${area.name} 면접 질문`;
 
         const [tocRes, contentRes] = await Promise.all([
-          fetch('../frontend/toc.md'),
-          fetch(`../frontend/contents/${q}.md`)
+          fetch(`../${area.dir}/toc.md`),
+          fetch(`../${area.dir}/contents/${q}.md`)
         ]);
 
         if (!contentRes.ok) throw new Error("답변 파일을 찾을 수 없습니다.");
@@ -700,7 +719,8 @@
         const tocText = await tocRes.text();
         const contentMd = await contentRes.text();
 
-        const allQuestions = [...tocText.matchAll(/-\s*\[(.*?)\]\(contents\/(fe-\d+)\.md\)/g)]
+        // 이전/다음 질문은 같은 영역의 목차 순서를 따른다
+        const allQuestions = [...tocText.matchAll(new RegExp(`-\\s*\\[(.*?)\\]\\(contents\\/(${match[1]}-\\d+)\\.md\\)`, 'g'))]
           .map(([, title, id]) => ({ id, title: title.replace(/\\([!-/:-@[-`{-~])/g, '$1') }));
 
         const currentIndex = allQuestions.findIndex(item => item.id === q);

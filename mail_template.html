@@ -11,7 +11,7 @@
 <body style="margin: 0; padding: 0; background-color: #e9ecef;">
   <!-- 받은편지함 미리보기 문구 -->
   <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; font-size: 1px; line-height: 1px; color: #e9ecef;">
-    오늘의 질문 #{{question_num}} · 답변을 머릿속으로 정리한 뒤 모범 답안을 확인해 보세요.
+    오늘의 {{question_area}} 질문 · 답변을 머릿속으로 정리한 뒤 모범 답안을 확인해 보세요.
   </div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#e9ecef" style="background-color: #e9ecef;">
@@ -32,7 +32,7 @@
                 <!-- 문서 머리 -->
                 <tr>
                   <td style="padding-bottom: 12px; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: #6b7682;">
-                    프론트엔드 면접 질문 · 오늘의 질문 #{{question_num}}
+                    {{question_area}} 면접 질문 · 오늘의 질문 {{question_id}}
                   </td>
                 </tr>
                 <tr>

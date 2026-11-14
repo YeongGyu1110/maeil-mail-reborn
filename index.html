@@ -1400,13 +1400,13 @@
     <!-- 문서 지면 -->
     <main class="doc-container">
       <header class="doc-header">
-        <div class="doc-meta">프론트엔드 면접 질문</div>
+        <div class="doc-meta">프론트엔드 · 백엔드 면접 질문</div>
         <h1>질문 색인</h1>
       </header>
 
       <a id="today" class="today q-link" hidden>
         <div>
-          <div class="today-label">오늘 받은 질문 · #<span id="today-num"></span></div>
+          <div class="today-label">오늘 받은 질문 · <span id="today-num"></span></div>
           <div id="today-title" class="today-title"></div>
         </div>
         <span class="today-go">읽기 →</span>
@@ -2230,12 +2230,16 @@
       return res.text();
     }
 
-    async function loadQuestions() {
-      const [toc, categoryToc, progress] = await Promise.all([
-        fetchText('frontend/toc.md'),
-        fetchText('frontend/toc-category.md').catch(() => ''),
-        // GitHub Pages가 10분 캐시를 걸어 두므로, 발송 직후에도 오늘 질문이 바뀌도록 서버에 다시 확인한다
-        fetchText('progress.txt', { cache: 'no-cache' }).catch(() => ''),
+    // 질문 ID 접두어(fe, be)별 목차 위치. 백엔드 카테고리는 이름 앞에 영역을 붙여 구분한다.
+    const AREAS = [
+      { prefix: 'fe', dir: 'frontend', categoryLabel: '' },
+      { prefix: 'be', dir: 'backend', categoryLabel: '백엔드 · ' },
+    ];
+
+    async function loadArea(area) {
+      const [toc, categoryToc] = await Promise.all([
+        fetchText(`${area.dir}/toc.md`),
+        fetchText(`${area.dir}/toc-category.md`).catch(() => ''),
       ]);
 
       const categoryOf = {};
@@ -2244,23 +2248,45 @@
       for (const line of categoryToc.split('\n')) {
         const heading = line.match(/^##\s+(.+)/);
         if (heading) {
-          current = heading[1].trim();
+          current = area.categoryLabel + heading[1].trim();
           categories.push(current);
           continue;
         }
-        const item = line.match(/\(contents\/(fe-\d+)\.md\)/);
+        const item = line.match(new RegExp(`\\(contents\\/(${area.prefix}-\\d+)\\.md\\)`));
         if (item && current) categoryOf[item[1]] = current;
       }
 
       // send_mail.py와 같은 형식: - [질문](contents/fe-1.md)
-      const questions = [...toc.matchAll(/-\s*\[(.*?)\]\(contents\/(fe-\d+)\.md\)/g)]
+      const questions = [...toc.matchAll(new RegExp(`-\\s*\\[(.*?)\\]\\(contents\\/(${area.prefix}-\\d+)\\.md\\)`, 'g'))]
         .map(([, title, id]) => ({ id, title: title.replace(/\\([!-/:-@[-`{-~])/g, '$1'), category: categoryOf[id] || '' }));
 
-      // progress.txt는 지금까지 발송한 질문 수
-      const sent = parseInt(progress, 10);
-      const today = sent > 0 ? questions[sent - 1] || null : null;
+      return { questions, categories };
+    }
 
-      return { questions, categories, today, todayNum: sent };
+    // 지금까지 보낸 질문 ID를 보낸 순서대로 돌려준다
+    async function loadSent(frontendQuestions) {
+      // GitHub Pages가 10분 캐시를 걸어 두므로, 발송 직후에도 오늘 질문이 바뀌도록 서버에 다시 확인한다
+      try {
+        const progress = JSON.parse(await fetchText('progress.json', { cache: 'no-cache' }));
+        if (Array.isArray(progress.sent)) return progress.sent;
+      } catch (e) {}
+
+      // progress.json이 생기기 전: progress.txt는 프론트엔드 목차 앞에서부터 보낸 질문 수
+      const count = parseInt(await fetchText('progress.txt', { cache: 'no-cache' }).catch(() => ''), 10);
+      return count > 0 ? frontendQuestions.slice(0, count).map((q) => q.id) : [];
+    }
+
+    async function loadQuestions() {
+      const loaded = await Promise.all(AREAS.map(loadArea));
+      const questions = loaded.flatMap((area) => area.questions);
+      const categories = loaded.flatMap((area) => area.categories);
+      const sent = await loadSent(loaded[0].questions);
+
+      // 오늘 받은 질문은 마지막으로 보낸 질문이다
+      const todayId = sent[sent.length - 1];
+      const today = questions.find((q) => q.id === todayId) || null;
+
+      return { questions, categories, today };
     }
 
     // ---------- 렌더링 ----------
@@ -2513,7 +2539,7 @@
       els.today.hidden = !q;
       if (!q) return;
       els.today.href = `questions/?q=${q.id}`;
-      els.todayNum.textContent = data.todayNum;
+      els.todayNum.textContent = q.id.toUpperCase(); // 예: FE-46
       els.todayTitle.textContent = q.title;
     }
 

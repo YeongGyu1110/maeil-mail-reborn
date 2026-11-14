@@ -10,7 +10,7 @@ jobs:
   send:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # progress.txt 커밋&푸시 권한
+      contents: write # progress.json 커밋&푸시 권한
 
     steps:
       - name: Checkout Repository
@@ -29,9 +29,10 @@ jobs:
           PAGES_URL: ${{ vars.PAGES_URL }} # Variables에서 등록
         run: python send_mail.py
 
-      - name: Update progress.txt
+      - name: Update progress.json
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add progress.txt
+          # 첫 실행에서 progress.txt를 progress.json으로 옮기며 지우므로, 삭제까지 함께 스테이징한다
+          git add -A -- 'progress.*'
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: advance question index" && git push)
