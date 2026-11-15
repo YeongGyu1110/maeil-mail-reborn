@@ -76,23 +76,38 @@ def save_progress(progress):
 
 
 def pick_question(progress):
-    """보낸 적도 없고 앞으로 보낼 예정도 아닌 질문 중 하나를 무작위로 골라 ID를 돌려준다."""
-    taken = set(progress['sent']) | set(progress['next'].values())
-    remaining = {
-        area: [file_id for _, file_id in get_questions(area) if file_id not in taken]
-        for area in AREAS
-    }
+    """보낸 적도 없고 앞으로 보낼 예정도 아닌 질문 중 하나를 무작위로 골라 ID를 돌려준다.
+    이번 바퀴에 남은 질문이 없으면 다음 바퀴(처음부터 다시) 질문을 고른다.
+    sent는 다음 바퀴의 첫 질문을 실제로 보낼 때 비운다 (record_sent)."""
+    upcoming = set(progress['next'].values())
+    if progress['today']:
+        upcoming.add(progress['today']['id'])  # 다시 시작하자마자 방금 보낸 질문이 또 나오지 않도록
 
-    if remaining['fe'] and remaining['be']:
-        area = 'be' if random.random() < BACKEND_PROBABILITY else 'fe'
-    elif remaining['fe']:
-        area = 'fe'
-    elif remaining['be']:
-        area = 'be'
-    else:
-        return None
+    for taken in (set(progress['sent']) | upcoming, upcoming):
+        remaining = {
+            area: [file_id for _, file_id in get_questions(area) if file_id not in taken]
+            for area in AREAS
+        }
 
-    return random.choice(remaining[area])
+        if remaining['fe'] and remaining['be']:
+            area = 'be' if random.random() < BACKEND_PROBABILITY else 'fe'
+        elif remaining['fe']:
+            area = 'fe'
+        elif remaining['be']:
+            area = 'be'
+        else:
+            continue
+
+        return random.choice(remaining[area])
+    return None  # 질문이 DAYS_AHEAD개보다 적을 때만 생긴다
+
+
+def record_sent(progress, file_id, all_ids):
+    """보낸 질문을 sent에 더한다. 모든 질문을 이미 보냈다면 sent를 비우고 처음부터 다시 센다."""
+    if set(all_ids) <= set(progress['sent']):
+        print("모든 질문을 보냈습니다. 처음부터 다시 시작합니다.")
+        progress['sent'] = []
+    progress['sent'].append(file_id)
 
 
 def next_mail_dates(after, count):
@@ -119,7 +134,7 @@ def run(progress, today, no_mail=False):
             print(f"[{file_id.upper()}] 목차에 없는 질문이라 건너뜁니다.")
             continue
         send_mail(file_id, titles[file_id], no_mail=no_mail)
-        progress['sent'].append(file_id)
+        record_sent(progress, file_id, titles)
         progress['today'] = {'date': day, 'id': file_id}
         save_progress(progress)  # 다음 메일이 실패해도 여기까지 보낸 기록은 남긴다
 
