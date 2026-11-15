@@ -5,6 +5,7 @@ import os
 import random
 import re
 import smtplib
+from datetime import date, datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -20,6 +21,12 @@ AREAS = {
 }
 # 두 영역 모두 남은 질문이 있을 때 백엔드 질문을 보낼 확률
 BACKEND_PROBABILITY = 0.2
+# 앞으로 보낼 질문을 발송일 몇 번만큼 미리 정해 둘지.
+# 앱은 미리 정해 둔 질문으로 알림을 띄우므로, Actions가 늦거나 하루 이틀 빠져도 알림은 제때 온다.
+DAYS_AHEAD = 3
+# 날짜는 모두 한국 시간 기준이다. Actions 서버는 UTC로 돌아서 그대로 쓰면 하루 전 날짜가 나온다.
+# 한국은 서머타임이 없어 고정된 +9시간으로 충분하다.
+KST = timezone(timedelta(hours=9))
 
 
 def area_of(question_id):
@@ -35,23 +42,44 @@ def get_questions(area):
             for title, file_id in pattern.findall(content)]  # [ (질문제목, "fe-1"), ... ]
 
 
-def load_sent():
-    """지금까지 보낸 질문 ID 목록을 보낸 순서대로 돌려준다."""
+def get_titles():
+    """{질문 ID: 제목}"""
+    return {file_id: title for area in AREAS for title, file_id in get_questions(area)}
+
+
+# ---------- progress.json ----------
+# {
+#   "sent": ["fe-1", ...],                          지금까지 보낸 질문 ID (보낸 순서대로)
+#   "today": {"date": "2026-11-17", "id": "fe-77"}, 가장 최근에 보낸 질문과 그 발송일
+#   "next": {"2026-11-18": "be-22", ...}            앞으로 보낼 질문 (발송일 DAYS_AHEAD번만큼)
+# }
+# 웹과 앱은 next와 today로 오늘의 질문을 찾고, 앱은 next로 알림을 미리 예약한다.
+
+def load_progress():
+    data = {}
     if Path(PROGRESS_FILE).exists():
-        return json.loads(Path(PROGRESS_FILE).read_text(encoding='utf-8'))['sent']
-    return []
+        data = json.loads(Path(PROGRESS_FILE).read_text(encoding='utf-8'))
+    return {
+        'sent': data.get('sent', []),
+        'today': data.get('today'),
+        'next': data.get('next', {}),
+    }
 
 
-def save_sent(sent):
-    data = {'sent': sent}
+def save_progress(progress):
+    data = {
+        'sent': progress['sent'],
+        'today': progress['today'],
+        'next': dict(sorted(progress['next'].items())),
+    }
     Path(PROGRESS_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
-def pick_question(sent):
-    """아직 보내지 않은 질문 중 하나를 무작위로 고른다."""
-    sent_ids = set(sent)
+def pick_question(progress):
+    """보낸 적도 없고 앞으로 보낼 예정도 아닌 질문 중 하나를 무작위로 골라 ID를 돌려준다."""
+    taken = set(progress['sent']) | set(progress['next'].values())
     remaining = {
-        area: [q for q in get_questions(area) if q[1] not in sent_ids]
+        area: [file_id for _, file_id in get_questions(area) if file_id not in taken]
         for area in AREAS
     }
 
@@ -65,6 +93,53 @@ def pick_question(sent):
         return None
 
     return random.choice(remaining[area])
+
+
+def next_mail_dates(after, count):
+    """after 다음 날부터 발송일 count개"""
+    return [after + timedelta(days=i) for i in range(1, count + 1)]
+
+
+def run(progress, today, no_mail=False):
+    """오늘 보낼 질문을 보내고, 앞으로 보낼 질문을 다시 정한다."""
+    key = today.isoformat()
+    titles = get_titles()
+
+    # 정해 둔 오늘 질문도 없고 오늘 보낸 질문도 없으면 (새 방식으로 처음 실행하는 날 등) 지금 정한다
+    sent_today = progress['today'] and progress['today']['date'] == key
+    if key not in progress['next'] and not sent_today:
+        picked = pick_question(progress)
+        if picked:
+            progress['next'][key] = picked
+
+    # 오늘까지 보낼 질문을 날짜 순서대로 보낸다. 실행이 빠진 날의 질문도 함께 보낸다.
+    for day in sorted(d for d in progress['next'] if d <= key):
+        file_id = progress['next'].pop(day)
+        if file_id not in titles:
+            print(f"[{file_id.upper()}] 목차에 없는 질문이라 건너뜁니다.")
+            continue
+        send_mail(file_id, titles[file_id], no_mail=no_mail)
+        progress['sent'].append(file_id)
+        progress['today'] = {'date': day, 'id': file_id}
+        save_progress(progress)  # 다음 메일이 실패해도 여기까지 보낸 기록은 남긴다
+
+    # 앞으로 보낼 질문을 다시 정한다.
+    # 가장 가까운 발송일 질문은 앱이 이미 알림으로 예약했을 수 있으므로 그대로 두고, 나머지만 새로 뽑는다.
+    if progress['next']:
+        fixed = min(progress['next'])
+        progress['next'] = {fixed: progress['next'][fixed]}
+        dates = next_mail_dates(date.fromisoformat(fixed), DAYS_AHEAD - 1)
+    else:
+        dates = next_mail_dates(today, DAYS_AHEAD)
+
+    for day in dates:
+        picked = pick_question(progress)
+        if picked is None:
+            print("남은 질문이 없어 더 정하지 못했습니다.")
+            break
+        progress['next'][day.isoformat()] = picked
+
+    save_progress(progress)
 
 
 def send_mail(file_id, title, no_mail=False):
@@ -108,18 +183,12 @@ def main():
     parser = argparse.ArgumentParser(description='오늘의 면접 질문을 메일로 보내고 progress.json을 갱신한다.')
     parser.add_argument('--no-mail', action='store_true',
                         help='메일은 보내지 않고 보낼 내용만 출력한다. progress.json은 그대로 갱신한다 (확인용)')
+    parser.add_argument('--date', type=date.fromisoformat,
+                        help='오늘을 이 날짜(YYYY-MM-DD, 한국 시간)로 보고 실행한다 (확인용)')
     args = parser.parse_args()
 
-    sent = load_sent()
-    picked = pick_question(sent)
-
-    if picked is None:
-        print("모든 질문 발송을 완료했습니다!")
-        return
-
-    title, file_id = picked
-    send_mail(file_id, title, no_mail=args.no_mail)
-    save_sent(sent + [file_id])
+    today = args.date or datetime.now(KST).date()
+    run(load_progress(), today, no_mail=args.no_mail)
 
 
 if __name__ == '__main__':
