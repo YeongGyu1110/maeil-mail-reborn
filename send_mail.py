@@ -179,10 +179,32 @@ def run(progress, today, mail_days, no_mail=False):
     save_progress(progress)
 
 
-def send_mail(file_id, title, no_mail=False):
-    """질문 하나를 메일로 보낸다. no_mail이면 보내지 않고 보낼 내용만 출력한다."""
+def run_test(progress, today, no_mail=False):
+    """테스트 발송: 실제로 받을 질문으로 메일만 보내고 progress.json은 바꾸지 않는다.
+    오늘 질문이 있으면 그것을, 없으면(쉬는 날 등) 다음 발송일 질문을 보낸다."""
+    key = today.isoformat()
+    titles = get_titles()
+    if key in progress['next']:
+        file_id = progress['next'][key]
+    elif progress['today'] and progress['today']['date'] == key:
+        file_id = progress['today']['id']
+    elif progress['next']:
+        file_id = progress['next'][min(progress['next'])]
+    else:
+        file_id = pick_question(progress)
+
+    if file_id not in titles:
+        print("테스트로 보낼 질문이 없습니다.")
+        return
+    send_mail(file_id, titles[file_id], no_mail=no_mail, test=True)
+
+
+def send_mail(file_id, title, no_mail=False, test=False):
+    """질문 하나를 메일로 보낸다. no_mail이면 보내지 않고 보낼 내용만 출력한다.
+    test면 정기 메일과 구분되도록 제목 앞에 [테스트]를 붙인다."""
+    subject = f"{'[테스트]' if test else ''}[매일메일] {title}"
     if no_mail:
-        print(f"[{file_id.upper()}] (메일 보내지 않음) {title}")
+        print(f"[{file_id.upper()}] (메일 보내지 않음) {subject}")
         return
 
     # 환경변수로부터 읽어올 값들 (발송할 때만 필요하다)
@@ -203,7 +225,7 @@ def send_mail(file_id, title, no_mail=False):
 
     # 이메일 메시지 생성
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"[매일메일] {title}"
+    msg['Subject'] = subject
     msg['From'] = f"매일메일 <{email_user}>"
     msg['To'] = receiver_email
     msg.attach(MIMEText(html_body, 'html', 'utf-8'))
@@ -213,7 +235,7 @@ def send_mail(file_id, title, no_mail=False):
         server.login(email_user, email_password)
         server.sendmail(email_user, receiver_email, msg.as_string())
 
-    print(f"[{file_id.upper()}] 발송 성공: {title}")
+    print(f"[{file_id.upper()}] 발송 성공: {subject}")
 
 
 def main():
@@ -222,9 +244,18 @@ def main():
                         help='메일은 보내지 않고 보낼 내용만 출력한다. progress.json은 그대로 갱신한다 (확인용)')
     parser.add_argument('--date', type=date.fromisoformat,
                         help='오늘을 이 날짜(YYYY-MM-DD, 한국 시간)로 보고 실행한다 (확인용)')
+    parser.add_argument('--test', action='store_true',
+                        help='테스트 발송: 메일 제목에 [테스트]를 붙이고 progress.json은 바꾸지 않는다. '
+                             'Actions 탭에서 수동 실행하면 자동으로 이 모드로 돈다')
     args = parser.parse_args()
 
     today = args.date or datetime.now(KST).date()
+    # Actions가 실행 방식을 GITHUB_EVENT_NAME으로 알려 준다. 수동 실행(workflow_dispatch)은 대부분 테스트라서
+    # 기록을 남기지 않는다. 그래야 같은 날 정기 발송 때 그 질문을 다시 제대로 받는다.
+    if args.test or os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
+        run_test(load_progress(), today, no_mail=args.no_mail)
+        return
+
     # 메일을 보낼 요일. daily-mail.yml에서 정한다 (예: "mon,tue,wed,thu,fri"). 없으면 매일
     mail_days = parse_mail_days(os.environ.get('MAIL_DAYS', ''))
     run(load_progress(), today, mail_days, no_mail=args.no_mail)

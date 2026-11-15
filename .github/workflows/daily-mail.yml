@@ -5,7 +5,9 @@ on:
     # 매일 UTC 20:07 (한국 시간 다음 날 오전 05:07)
     # 요일은 여기서 거르지 않고 아래 MAIL_DAYS로 정한다. 쉬는 날에도 돌아야 빠진 날을 메울 수 있다.
     - cron: '7 20 * * *'
-  workflow_dispatch: # Actions 탭에서 수동 실행 버튼 활성화
+  # Actions 탭에서 수동 실행 버튼 활성화. 수동 실행은 테스트 발송이라
+  # 제목에 [테스트]를 붙여 메일만 보내고 progress.json은 바꾸지 않는다.
+  workflow_dispatch:
 
 jobs:
   send:
