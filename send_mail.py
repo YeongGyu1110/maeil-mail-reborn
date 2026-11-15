@@ -1,3 +1,4 @@
+import argparse
 import html
 import json
 import os
@@ -66,17 +67,20 @@ def pick_question(sent):
     return random.choice(remaining[area])
 
 
-def main():
-    sent = load_sent()
-    picked = pick_question(sent)
-
-    if picked is None:
-        print("모든 질문 발송을 완료했습니다!")
+def send_mail(file_id, title, no_mail=False):
+    """질문 하나를 메일로 보낸다. no_mail이면 보내지 않고 보낼 내용만 출력한다."""
+    if no_mail:
+        print(f"[{file_id.upper()}] (메일 보내지 않음) {title}")
         return
 
-    title, file_id = picked
+    # 환경변수로부터 읽어올 값들 (발송할 때만 필요하다)
+    email_user = os.environ['EMAIL_USER']
+    email_password = os.environ['EMAIL_PASSWORD']
+    receiver_email = os.environ['RECEIVER_EMAIL']
+    pages_url = os.environ.get('PAGES_URL', '').rstrip('/')  # 예: https://your-id.github.io/your-repo
+
     area_name = AREAS[area_of(file_id)]['name']
-    viewer_url = f"{GITHUB_PAGES_URL}/questions/?q={file_id}" if GITHUB_PAGES_URL else "#"
+    viewer_url = f"{pages_url}/questions/?q={file_id}" if pages_url else "#"
 
     # HTML 템플릿 치환
     template = Path(TEMPLATE_FILE).read_text(encoding='utf-8')
@@ -88,24 +92,35 @@ def main():
     # 이메일 메시지 생성
     msg = MIMEMultipart('alternative')
     msg['Subject'] = f"[매일메일] {title}"
-    msg['From'] = f"매일메일 <{EMAIL_USER}>"
-    msg['To'] = RECEIVER_EMAIL
+    msg['From'] = f"매일메일 <{email_user}>"
+    msg['To'] = receiver_email
     msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
     # 발송
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(EMAIL_USER, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_USER, RECEIVER_EMAIL, msg.as_string())
+        server.login(email_user, email_password)
+        server.sendmail(email_user, receiver_email, msg.as_string())
 
     print(f"[{file_id.upper()}] 발송 성공: {title}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='오늘의 면접 질문을 메일로 보내고 progress.json을 갱신한다.')
+    parser.add_argument('--no-mail', action='store_true',
+                        help='메일은 보내지 않고 보낼 내용만 출력한다. progress.json은 그대로 갱신한다 (확인용)')
+    args = parser.parse_args()
+
+    sent = load_sent()
+    picked = pick_question(sent)
+
+    if picked is None:
+        print("모든 질문 발송을 완료했습니다!")
+        return
+
+    title, file_id = picked
+    send_mail(file_id, title, no_mail=args.no_mail)
     save_sent(sent + [file_id])
 
 
 if __name__ == '__main__':
-    # 환경변수로부터 읽어올 값들 (발송할 때만 필요하다)
-    EMAIL_USER = os.environ['EMAIL_USER']
-    EMAIL_PASSWORD = os.environ['EMAIL_PASSWORD']
-    RECEIVER_EMAIL = os.environ['RECEIVER_EMAIL']
-    GITHUB_PAGES_URL = os.environ.get('PAGES_URL', '').rstrip('/')
-    # 예: https://your-id.github.io/your-repo
     main()
