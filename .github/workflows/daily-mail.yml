@@ -3,6 +3,7 @@ name: Daily Interview Mail
 on:
   schedule:
     # 매일 UTC 20:07 (한국 시간 다음 날 오전 05:07)
+    # 요일은 여기서 거르지 않고 아래 MAIL_DAYS로 정한다. 쉬는 날에도 돌아야 빠진 날을 메울 수 있다.
     - cron: '7 20 * * *'
   workflow_dispatch: # Actions 탭에서 수동 실행 버튼 활성화
 
@@ -27,6 +28,9 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           PAGES_URL: ${{ vars.PAGES_URL }} # Variables에서 등록
+          # 메일을 받을 요일 (한국 시간): mon,tue,wed,thu,fri,sat,sun 중에서 쉼표로. 비우면 매일
+          # 앱 알림도 이 요일을 따른다 (progress.json의 next에 이 요일만 들어간다)
+          MAIL_DAYS: mon,tue,wed,thu,fri
         run: python send_mail.py
 
       - name: Update progress.json

@@ -27,6 +27,8 @@ DAYS_AHEAD = 3
 # 날짜는 모두 한국 시간 기준이다. Actions 서버는 UTC로 돌아서 그대로 쓰면 하루 전 날짜가 나온다.
 # 한국은 서머타임이 없어 고정된 +9시간으로 충분하다.
 KST = timezone(timedelta(hours=9))
+# MAIL_DAYS 환경 변수에 쓰는 요일 이름 (date.weekday() 순서)
+WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
 
 def area_of(question_id):
@@ -110,19 +112,38 @@ def record_sent(progress, file_id, all_ids):
     progress['sent'].append(file_id)
 
 
-def next_mail_dates(after, count):
+def parse_mail_days(value):
+    """MAIL_DAYS (예: "mon,tue,wed,thu,fri")를 요일 번호 집합으로 바꾼다. 비어 있으면 매일 보낸다."""
+    if not value.strip():
+        return set(range(7))
+    days = set()
+    for name in value.split(','):
+        name = name.strip().lower()
+        if name not in WEEKDAYS:
+            raise SystemExit(f"MAIL_DAYS에 알 수 없는 요일이 있어요: '{name}' (쓸 수 있는 값: {','.join(WEEKDAYS)})")
+        days.add(WEEKDAYS.index(name))
+    return days
+
+
+def next_mail_dates(after, count, mail_days):
     """after 다음 날부터 발송일 count개"""
-    return [after + timedelta(days=i) for i in range(1, count + 1)]
+    dates = []
+    day = after
+    while len(dates) < count:
+        day += timedelta(days=1)
+        if day.weekday() in mail_days:
+            dates.append(day)
+    return dates
 
 
-def run(progress, today, no_mail=False):
+def run(progress, today, mail_days, no_mail=False):
     """오늘 보낼 질문을 보내고, 앞으로 보낼 질문을 다시 정한다."""
     key = today.isoformat()
     titles = get_titles()
 
-    # 정해 둔 오늘 질문도 없고 오늘 보낸 질문도 없으면 (새 방식으로 처음 실행하는 날 등) 지금 정한다
+    # 오늘이 발송일인데 정해 둔 오늘 질문도, 오늘 보낸 질문도 없으면 (새 방식으로 처음 실행하는 날 등) 지금 정한다
     sent_today = progress['today'] and progress['today']['date'] == key
-    if key not in progress['next'] and not sent_today:
+    if today.weekday() in mail_days and key not in progress['next'] and not sent_today:
         picked = pick_question(progress)
         if picked:
             progress['next'][key] = picked
@@ -140,12 +161,13 @@ def run(progress, today, no_mail=False):
 
     # 앞으로 보낼 질문을 다시 정한다.
     # 가장 가까운 발송일 질문은 앱이 이미 알림으로 예약했을 수 있으므로 그대로 두고, 나머지만 새로 뽑는다.
+    # 그래서 MAIL_DAYS를 바꾸면 이미 정해 둔 가장 가까운 날 하루는 예전 요일 설정대로 남는다.
     if progress['next']:
         fixed = min(progress['next'])
         progress['next'] = {fixed: progress['next'][fixed]}
-        dates = next_mail_dates(date.fromisoformat(fixed), DAYS_AHEAD - 1)
+        dates = next_mail_dates(date.fromisoformat(fixed), DAYS_AHEAD - 1, mail_days)
     else:
-        dates = next_mail_dates(today, DAYS_AHEAD)
+        dates = next_mail_dates(today, DAYS_AHEAD, mail_days)
 
     for day in dates:
         picked = pick_question(progress)
@@ -203,7 +225,9 @@ def main():
     args = parser.parse_args()
 
     today = args.date or datetime.now(KST).date()
-    run(load_progress(), today, no_mail=args.no_mail)
+    # 메일을 보낼 요일. daily-mail.yml에서 정한다 (예: "mon,tue,wed,thu,fri"). 없으면 매일
+    mail_days = parse_mail_days(os.environ.get('MAIL_DAYS', ''))
+    run(load_progress(), today, mail_days, no_mail=args.no_mail)
 
 
 if __name__ == '__main__':
