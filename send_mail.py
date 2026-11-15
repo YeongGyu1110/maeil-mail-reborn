@@ -10,7 +10,6 @@ from pathlib import Path
 
 # 설정
 PROGRESS_FILE = 'progress.json'
-LEGACY_PROGRESS_FILE = 'progress.txt'  # 순서대로 보내던 시절의 "보낸 질문 수"
 TEMPLATE_FILE = 'mail_template.html'
 
 # 영역별 목차와 이름. 질문 ID 접두어(fe, be)로 영역을 구분한다.
@@ -39,22 +38,12 @@ def load_sent():
     """지금까지 보낸 질문 ID 목록을 보낸 순서대로 돌려준다."""
     if Path(PROGRESS_FILE).exists():
         return json.loads(Path(PROGRESS_FILE).read_text(encoding='utf-8'))['sent']
-
-    # progress.txt만 있으면 프론트엔드 목차의 앞에서부터 그 수만큼 보낸 것으로 옮겨 온다
-    legacy = Path(LEGACY_PROGRESS_FILE)
-    count = 0
-    if legacy.exists():
-        try:
-            count = int(legacy.read_text().strip())
-        except ValueError:
-            count = 0
-    return [file_id for _, file_id in get_questions('fe')[:count]]
+    return []
 
 
 def save_sent(sent):
     data = {'sent': sent}
     Path(PROGRESS_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    Path(LEGACY_PROGRESS_FILE).unlink(missing_ok=True)
 
 
 def pick_question(sent):

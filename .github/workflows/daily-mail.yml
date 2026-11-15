@@ -33,6 +33,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 첫 실행에서 progress.txt를 progress.json으로 옮기며 지우므로, 삭제까지 함께 스테이징한다
-          git add -A -- 'progress.*'
+          git add progress.json
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: advance question index" && git push)

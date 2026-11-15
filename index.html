@@ -2267,23 +2267,20 @@
     }
 
     // 지금까지 보낸 질문 ID를 보낸 순서대로 돌려준다
-    async function loadSent(frontendQuestions) {
+    async function loadSent() {
       // GitHub Pages가 10분 캐시를 걸어 두므로, 발송 직후에도 오늘 질문이 바뀌도록 서버에 다시 확인한다
       try {
         const progress = JSON.parse(await fetchText('progress.json', { cache: 'no-cache' }));
         if (Array.isArray(progress.sent)) return progress.sent;
       } catch (e) {}
-
-      // progress.json이 생기기 전: progress.txt는 프론트엔드 목차 앞에서부터 보낸 질문 수
-      const count = parseInt(await fetchText('progress.txt', { cache: 'no-cache' }).catch(() => ''), 10);
-      return count > 0 ? frontendQuestions.slice(0, count).map((q) => q.id) : [];
+      return [];
     }
 
     async function loadQuestions() {
       const loaded = await Promise.all(AREAS.map(loadArea));
       const questions = loaded.flatMap((area) => area.questions);
       const categories = loaded.flatMap((area) => area.categories);
-      const sent = await loadSent(loaded[0].questions);
+      const sent = await loadSent();
 
       // 오늘 받은 질문은 마지막으로 보낸 질문이다
       const todayId = sent[sent.length - 1];
