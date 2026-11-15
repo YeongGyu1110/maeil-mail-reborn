@@ -2266,24 +2266,37 @@
       return { questions, categories };
     }
 
-    // 지금까지 보낸 질문 ID를 보낸 순서대로 돌려준다
-    async function loadSent() {
+    // progress.json (send_mail.py가 쓴다)
+    // { sent: ["fe-1", ...], today: { date: "2026-11-17", id: "fe-77" }, next: { "2026-11-18": "be-22", ... } }
+    async function loadProgress() {
       // GitHub Pages가 10분 캐시를 걸어 두므로, 발송 직후에도 오늘 질문이 바뀌도록 서버에 다시 확인한다
       try {
-        const progress = JSON.parse(await fetchText('progress.json', { cache: 'no-cache' }));
-        if (Array.isArray(progress.sent)) return progress.sent;
-      } catch (e) {}
-      return [];
+        return JSON.parse(await fetchText('progress.json', { cache: 'no-cache' }));
+      } catch (e) {
+        return {};
+      }
+    }
+
+    // 한국 날짜 (YYYY-MM-DD). 발송일은 한국 시간 기준이다.
+    function koreaDate() {
+      return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    }
+
+    // 오늘 받은 질문: 메일 발송 전이면 next에 정해 둔 오늘 질문, 발송 뒤면 today. 둘 다 아니면 쉬는 날이다.
+    function todayQuestionId(progress) {
+      const date = koreaDate();
+      if (progress.next?.[date]) return progress.next[date];
+      if (progress.today?.date === date) return progress.today.id;
+      // next가 생기기 전 형식이면 마지막으로 보낸 질문
+      if (!progress.next && Array.isArray(progress.sent)) return progress.sent[progress.sent.length - 1];
+      return null;
     }
 
     async function loadQuestions() {
       const loaded = await Promise.all(AREAS.map(loadArea));
       const questions = loaded.flatMap((area) => area.questions);
       const categories = loaded.flatMap((area) => area.categories);
-      const sent = await loadSent();
-
-      // 오늘 받은 질문은 마지막으로 보낸 질문이다
-      const todayId = sent[sent.length - 1];
+      const todayId = todayQuestionId(await loadProgress());
       const today = questions.find((q) => q.id === todayId) || null;
 
       return { questions, categories, today };
