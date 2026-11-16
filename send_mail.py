@@ -45,15 +45,24 @@ def get_questions(area):
 
 
 def get_titles():
-    """{질문 ID: 제목}"""
-    return {file_id: title for area in AREAS for title, file_id in get_questions(area)}
+    """{질문 ID: 제목}
+    목차에서 질문을 하나도 찾지 못한 영역이 있으면 멈춘다. 목차 형식이 잘못됐을 때
+    그 영역의 질문이 모두 빠진 것으로 보고 정해 둔 질문을 지우지 않도록."""
+    titles = {}
+    for area in AREAS:
+        questions = get_questions(area)
+        if not questions:
+            raise SystemExit(f"{AREAS[area]['toc']}에서 질문을 찾지 못했습니다. 목차 형식을 확인해 주세요.")
+        titles.update({file_id: title for title, file_id in questions})
+    return titles
 
 
 # ---------- progress.json ----------
 # {
 #   "sent": ["fe-1", ...],                          지금까지 보낸 질문 ID (보낸 순서대로)
 #   "today": {"date": "2026-11-17", "id": "fe-77"}, 가장 최근에 보낸 질문과 그 발송일
-#   "next": {"2026-11-18": "be-22", ...}            앞으로 보낼 질문 (발송일 DAYS_AHEAD번만큼)
+#   "next": {"2026-11-18": "be-22", ...}            앞으로 보낼 질문 (발송일 DAYS_AHEAD번만큼).
+#                                                   한 번 정한 질문은 보낼 때까지 바꾸지 않는다
 # }
 # 웹과 앱은 next와 today로 오늘의 질문을 찾고, 앱은 next로 알림을 미리 예약한다.
 
@@ -125,21 +134,24 @@ def parse_mail_days(value):
     return days
 
 
-def next_mail_dates(after, count, mail_days):
-    """after 다음 날부터 발송일 count개"""
-    dates = []
-    day = after
-    while len(dates) < count:
+def mail_dates_after(day, mail_days):
+    """day 다음 날부터 발송일을 차례로 끝없이 돌려준다"""
+    while True:
         day += timedelta(days=1)
         if day.weekday() in mail_days:
-            dates.append(day)
-    return dates
+            yield day
 
 
 def run(progress, today, mail_days, no_mail=False):
-    """오늘 보낼 질문을 보내고, 앞으로 보낼 질문을 다시 정한다."""
+    """오늘까지 보낼 질문을 보내고, 앞으로 보낼 질문을 DAYS_AHEAD개까지 채운다."""
     key = today.isoformat()
     titles = get_titles()
+
+    # 목차에서 빠진 질문은 정해 둔 날짜에서 뺀다. 빈 날짜는 아래에서 새 질문으로 채운다.
+    for day, file_id in list(progress['next'].items()):
+        if file_id not in titles:
+            print(f"[{file_id.upper()}] 목차에 없는 질문이라 {day} 발송에서 뺍니다.")
+            del progress['next'][day]
 
     # 오늘이 발송일인데 정해 둔 오늘 질문도, 오늘 보낸 질문도 없으면 (새 방식으로 처음 실행하는 날 등) 지금 정한다
     sent_today = progress['today'] and progress['today']['date'] == key
@@ -151,25 +163,19 @@ def run(progress, today, mail_days, no_mail=False):
     # 오늘까지 보낼 질문을 날짜 순서대로 보낸다. 실행이 빠진 날의 질문도 함께 보낸다.
     for day in sorted(d for d in progress['next'] if d <= key):
         file_id = progress['next'].pop(day)
-        if file_id not in titles:
-            print(f"[{file_id.upper()}] 목차에 없는 질문이라 건너뜁니다.")
-            continue
         send_mail(file_id, titles[file_id], no_mail=no_mail)
         record_sent(progress, file_id, titles)
         progress['today'] = {'date': day, 'id': file_id}
         save_progress(progress)  # 다음 메일이 실패해도 여기까지 보낸 기록은 남긴다
 
-    # 앞으로 보낼 질문을 다시 정한다.
-    # 가장 가까운 발송일 질문은 앱이 이미 알림으로 예약했을 수 있으므로 그대로 두고, 나머지만 새로 뽑는다.
-    # 그래서 MAIL_DAYS를 바꾸면 이미 정해 둔 가장 가까운 날 하루는 예전 요일 설정대로 남는다.
-    if progress['next']:
-        fixed = min(progress['next'])
-        progress['next'] = {fixed: progress['next'][fixed]}
-        dates = next_mail_dates(date.fromisoformat(fixed), DAYS_AHEAD - 1, mail_days)
-    else:
-        dates = next_mail_dates(today, DAYS_AHEAD, mail_days)
-
-    for day in dates:
+    # 앞으로 보낼 질문을 DAYS_AHEAD개까지 채운다. 이미 정한 질문은 보낼 때까지 바꾸지 않고 빈 날짜만 채운다.
+    # 앱이 next를 보고 알림을 미리 예약하므로, 바꾸면 알림과 메일이 어긋난다. 쉬는 날 실행에서도 바뀌는 것이 없다.
+    # 그래서 MAIL_DAYS를 바꿔도 이미 정해 둔 날짜는 예전 설정대로 보내고, 새 설정은 빈 날짜부터 적용된다.
+    for day in mail_dates_after(today, mail_days):
+        if len(progress['next']) >= DAYS_AHEAD:
+            break
+        if day.isoformat() in progress['next']:
+            continue
         picked = pick_question(progress)
         if picked is None:
             print("남은 질문이 없어 더 정하지 못했습니다.")

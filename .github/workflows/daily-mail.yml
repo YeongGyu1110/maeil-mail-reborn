@@ -39,7 +39,8 @@ jobs:
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           PAGES_URL: ${{ vars.PAGES_URL }} # Variables에서 등록
           # 메일을 받을 요일 (한국 시간): mon,tue,wed,thu,fri,sat,sun 중에서 쉼표로. 비우면 매일
-          # 앱 알림도 이 요일을 따른다 (progress.json의 next에 이 요일만 들어간다)
+          # 앱 알림도 이 요일을 따른다 (progress.json의 next에 이 요일만 들어간다).
+          # 바꿔도 next에 이미 정해 둔 날짜(최대 3번)는 예전 설정대로 보내고, 그 밖의 날짜부터 새 설정을 따른다
           MAIL_DAYS: mon,tue,wed,thu,fri
         run: python send_mail.py
 
