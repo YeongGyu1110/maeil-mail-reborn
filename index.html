@@ -801,6 +801,41 @@
       color: var(--text-muted);
     }
 
+    /* 한 줄에 다 안 들어가는 메모만 펼칠 수 있다 (버튼은 줄 오른쪽 끝에 고정) */
+    .q-memo-toggle {
+      flex-shrink: 0;
+      margin-left: auto;
+      padding: 0 2px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font: inherit;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .q-memo-toggle:hover {
+      color: var(--text-main);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* 펼친 메모: 한 줄 미리보기 대신 메모 편집기와 같은 자리·폭에 줄바꿈을 살려 전부 보여준다 */
+    .q-row.memo-expanded .q-memo-preview { display: none; }
+
+    .q-memo-full {
+      margin: 8px 0 4px 80px;
+      padding: 12px 14px;
+      border-radius: 2px;
+      background: var(--bg-subtle);
+      color: var(--text-sub);
+      font-size: 14px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
     .q-actions {
       display: flex;
       align-items: center;
@@ -1284,7 +1319,8 @@
         grid-column: 1;
         flex-wrap: wrap;
       }
-      .memo-editor { margin-left: 0; }
+      .memo-editor,
+      .q-memo-full { margin-left: 0; }
     }
   </style>
 </head>
@@ -1479,6 +1515,7 @@
           <div class="q-meta">
             <span class="q-cat"></span>
             <span class="q-memo-preview" hidden></span>
+            <button type="button" class="q-memo-toggle" data-action="memo-toggle" aria-expanded="false" hidden>펼치기</button>
           </div>
         </div>
         <div class="q-actions">
@@ -1495,6 +1532,7 @@
           </button>
         </div>
       </div>
+      <div class="q-memo-full" hidden></div>
     </li>
   </template>
 
@@ -2589,10 +2627,48 @@
       link.href = `questions/?q=${q.id}`;
       link.textContent = q.title;
       row.querySelector('.q-cat').textContent = q.category;
+      const full = row.querySelector('.q-memo-full');
+      full.id = `memo-${q.id}`;
+      row.querySelector('.q-memo-toggle').setAttribute('aria-controls', full.id);
+      memoObserver.observe(row.querySelector('.q-meta'));
       return row;
     }
 
+    // 메모 미리보기가 한 줄에 다 들어가는지는 행이 화면에 보이고 폭이 정해져야 알 수 있다.
+    // 필터로 숨었던 행이 보이거나 화면 폭이 바뀌면 메타 줄(.q-meta)의 크기가 바뀌므로 그때 다시 잰다.
+    // 미리보기 대신 메타 줄을 지켜보는 것은, 버튼을 보이고 숨길 때 바뀌는 건 미리보기 폭뿐이라
+    // 콜백 안에서 지켜보는 요소의 크기를 다시 바꾸는 루프(ResizeObserver loop 오류)가 생기지 않게 하려는 것이다.
+    const memoObserver = new ResizeObserver((entries) => {
+      for (const { target } of entries) updateMemoToggle(target.closest('.q-row'));
+    });
+
+    function updateMemoToggle(row) {
+      const preview = row.querySelector('.q-memo-preview');
+      const toggle = row.querySelector('.q-memo-toggle');
+      if (preview.hidden) {
+        toggle.hidden = true;
+        return;
+      }
+      // 펼친 상태면 접기 버튼을 그대로 두고, 화면에 없으면(폭 0) 보일 때 다시 잰다
+      if (row.classList.contains('memo-expanded') || !row.querySelector('.q-meta').clientWidth) return;
+      // 버튼 자리를 뺀 폭으로 재야, 버튼 때문에만 넘치는 메모에 버튼이 남지 않는다
+      toggle.hidden = true;
+      toggle.hidden = preview.scrollWidth <= preview.clientWidth;
+    }
+
+    function setMemoExpanded(row, expanded) {
+      row.classList.toggle('memo-expanded', expanded);
+      const full = row.querySelector('.q-memo-full');
+      full.textContent = expanded ? store.item(row.dataset.id).memo || '' : '';
+      full.hidden = !expanded;
+      const toggle = row.querySelector('.q-memo-toggle');
+      toggle.textContent = expanded ? '접기' : '펼치기';
+      toggle.setAttribute('aria-expanded', String(expanded));
+      if (!expanded) updateMemoToggle(row);
+    }
+
     function renderAll() {
+      memoObserver.disconnect();
       rows.clear();
       const fragment = document.createDocumentFragment();
       for (const q of data.questions) {
@@ -2629,10 +2705,16 @@
       star.setAttribute('aria-pressed', String(Boolean(item.starred)));
       star.setAttribute('aria-label', item.starred ? '별표 해제' : '별표');
 
+      // 한 줄 미리보기는 CSS(nowrap)가 줄바꿈을 공백으로 합쳐 보여준다. 펼친 메모(.q-memo-full)는 줄바꿈을 살린다
       const preview = row.querySelector('.q-memo-preview');
-      preview.textContent = item.memo ? item.memo.replace(/\s+/g, ' ') : '';
-      preview.hidden = !item.memo;
-      row.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(item.memo));
+      const memo = item.memo || '';
+      preview.hidden = !memo;
+      // 내용이 바뀐 행만 접고 다시 잰다 (모든 행을 재면 다시 불러올 때마다 레이아웃을 220번 계산한다)
+      if (preview.textContent !== memo) {
+        preview.textContent = memo;
+        setMemoExpanded(row, false);
+      }
+      row.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(memo));
     }
 
     function renderToday() {
@@ -2839,6 +2921,7 @@
       textarea.value = store.item(row.dataset.id).memo || '';
       textarea.setAttribute('aria-label', `${row.dataset.id.toUpperCase()} 메모`);
 
+      setMemoExpanded(row, false); // 편집기와 같은 내용이 두 번 보이지 않게 접는다
       row.append(editor);
       row.querySelector('.memo-btn').setAttribute('aria-expanded', 'true');
       updateEditor(row);
@@ -2972,6 +3055,7 @@
         else if (action === 'memo') editorOf(row) ? closeEditor(row) : openEditor(row);
         else if (action === 'memo-close') closeEditor(row);
         else if (action === 'memo-save') saveMemo(row);
+        else if (action === 'memo-toggle') setMemoExpanded(row, !row.classList.contains('memo-expanded'));
       });
 
       els.list.addEventListener('input', (e) => {
