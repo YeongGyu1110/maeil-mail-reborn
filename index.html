@@ -851,21 +851,20 @@
       text-underline-offset: 3px;
     }
 
-    /* 펼친 메모: 한 줄 미리보기 대신 메모 편집기와 같은 자리·폭에 줄바꿈을 살려 전부 보여준다 */
+    /* 펼친 메모: 한 줄 미리보기 대신 메모 편집기와 같은 자리·폭에 마크다운으로 그려 전부 보여준다.
+       글자 모양은 편집기 미리보기와 같은 .memo-md를 쓴다 */
     .q-row.memo-expanded .q-memo-preview { display: none; }
 
     .q-memo-full {
       margin: 8px 0 4px 80px;
       padding: 12px 14px;
+      border: 1px solid var(--rule);
       border-radius: 2px;
-      background: var(--bg-subtle);
-      color: var(--text-sub);
-      font-size: 14px;
-      line-height: 1.7;
+      /* 마크다운 파서를 받기 전·받지 못했을 때는 원문을 줄바꿈 그대로 보여준다 */
       white-space: pre-wrap;
-      word-break: keep-all;
-      overflow-wrap: anywhere;
     }
+
+    .q-memo-full.is-rendered { white-space: normal; }
 
     .q-actions {
       display: flex;
@@ -1736,7 +1735,7 @@
           </button>
         </div>
       </div>
-      <div class="q-memo-full" hidden></div>
+      <div class="q-memo-full memo-md" hidden></div>
     </li>
   </template>
 
@@ -2868,13 +2867,51 @@
 
     function setMemoExpanded(row, expanded) {
       row.classList.toggle('memo-expanded', expanded);
+      const memo = expanded ? store.item(row.dataset.id).memo || '' : '';
       const full = row.querySelector('.q-memo-full');
-      full.textContent = expanded ? store.item(row.dataset.id).memo || '' : '';
+      full.classList.remove('is-rendered');
+      full.textContent = memo;
       full.hidden = !expanded;
       const toggle = row.querySelector('.q-memo-toggle');
       toggle.textContent = expanded ? '접기' : '펼치기';
       toggle.setAttribute('aria-expanded', String(expanded));
-      if (!expanded) updateMemoToggle(row);
+      if (expanded) renderExpandedMemo(row, memo);
+      else updateMemoToggle(row);
+    }
+
+    // 처음 펼칠 때는 마크다운 파서를 받는 동안 원문을 보여주고, 받으면 바꿔 그린다. 받지 못하면 원문을 그대로 둔다
+    async function renderExpandedMemo(row, memo) {
+      try {
+        await loadMarkdown();
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      // 받는 사이 접었거나 메모가 바뀌었으면 그리지 않는다
+      if (!row.classList.contains('memo-expanded') || (store.item(row.dataset.id).memo || '') !== memo) return;
+      const full = row.querySelector('.q-memo-full');
+      try {
+        renderMarkdown(full, memo);
+        full.classList.add('is-rendered');
+      } catch (err) {
+        console.error(err);
+        full.textContent = memo;
+      }
+    }
+
+    // 행마다 지금 보여주고 있는 메모 원문 (한 줄 미리보기는 기호를 걷어 낸 글자라 원문과 비교할 수 없다)
+    const shownMemos = new WeakMap();
+
+    // 한 줄 미리보기용: 마크다운 기호를 걷어 내고 읽을 글자만 남긴다 (정확한 변환이 아니라 훑어보기 좋게 하는 정도)
+    function memoPlainText(md) {
+      return md
+        .replace(/^\s*(```|~~~).*$/gm, '') // 코드 블록 울타리
+        .replace(/^[\s|:-]+$/gm, '') // 표 구분선, 가로줄
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1') // 이미지 → 대체 글
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 링크 → 글자
+        .replace(/^\s*(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)/gm, '') // 제목·인용·목록 기호
+        .replace(/\*\*|__|~~|`/g, '') // 강조·코드 기호
+        .replace(/\s*\|\s*/g, ' '); // 표 칸 나눔
     }
 
     function renderAll() {
@@ -2915,13 +2952,15 @@
       star.setAttribute('aria-pressed', String(Boolean(item.starred)));
       star.setAttribute('aria-label', item.starred ? '별표 해제' : '별표');
 
-      // 한 줄 미리보기는 CSS(nowrap)가 줄바꿈을 공백으로 합쳐 보여준다. 펼친 메모(.q-memo-full)는 줄바꿈을 살린다
+      // 한 줄 미리보기는 마크다운 기호를 걷어 낸 글자를 보여주고, CSS(nowrap)가 줄바꿈을 공백으로 합친다.
+      // 펼친 메모(.q-memo-full)는 마크다운으로 그린다
       const preview = row.querySelector('.q-memo-preview');
       const memo = item.memo || '';
       preview.hidden = !memo;
       // 내용이 바뀐 행만 접고 다시 잰다 (모든 행을 재면 다시 불러올 때마다 레이아웃을 220번 계산한다)
-      if (preview.textContent !== memo) {
-        preview.textContent = memo;
+      if (shownMemos.get(row) !== memo) {
+        shownMemos.set(row, memo);
+        preview.textContent = memoPlainText(memo);
         setMemoExpanded(row, false);
       }
       row.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(memo));
