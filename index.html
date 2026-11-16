@@ -52,6 +52,22 @@
 
       --skeleton-base: #eceef1;
       --skeleton-highlight: #dde1e5;
+
+      /* 메모 미리보기의 코드 블록 (질문 화면과 같은 색) */
+      --code-block-bg: #f3f5f7;
+      --code-block-text: #1e293b;
+      --code-inline-bg: #eef0f3;
+      --code-inline-color: #1e293b;
+
+      --syntax-comment: #64748b;
+      --syntax-punctuation: #475569;
+      --syntax-keyword: #c2410c;
+      --syntax-tag: #15803d;
+      --syntax-string: #0369a1;
+      --syntax-number: #0284c7;
+      --syntax-function: #7c3aed;
+      --syntax-operator: #c2410c;
+      --syntax-variable: #b45309;
     }
 
     /* [다크 모드] 무채색 흑연 캔버스 위의 짙은 종이 */
@@ -80,6 +96,21 @@
 
       --skeleton-base: #232326;
       --skeleton-highlight: #2e2e32;
+
+      --code-block-bg: #141416;
+      --code-block-text: #e2e8f0;
+      --code-inline-bg: #26262a;
+      --code-inline-color: #e2e8f0;
+
+      --syntax-comment: #828d9d;
+      --syntax-punctuation: #94a3b8;
+      --syntax-keyword: #fb923c;
+      --syntax-tag: #4ade80;
+      --syntax-string: #7dd3fc;
+      --syntax-number: #38bdf8;
+      --syntax-function: #c084fc;
+      --syntax-operator: #fb923c;
+      --syntax-variable: #fbbf24;
     }
 
     * { box-sizing: border-box; }
@@ -956,6 +987,179 @@
 
     .memo-editor textarea::placeholder { color: var(--text-muted); }
 
+    /* 작성 / 미리보기 전환 */
+    .memo-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-bottom: 6px;
+    }
+
+    .memo-tab {
+      height: 26px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    .memo-tab:hover,
+    .memo-tab[aria-pressed="true"] {
+      background: var(--bg-subtle);
+      color: var(--text-main);
+    }
+
+    .memo-tabs-hint {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* 미리보기: 질문 화면처럼 종이 위에 그린 문서로 보이도록 면 대신 얇은 테두리만 둔다 */
+    .memo-preview {
+      min-height: 120px;
+      padding: 12px 14px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+    }
+
+    .memo-preview-note {
+      margin: 0;
+      color: var(--text-muted);
+    }
+
+    /* 메모 마크다운: 질문 화면 본문과 같은 문서식 타이포그래피를 메모 크기로 줄였다 */
+    .memo-md {
+      font-size: 14.5px;
+      line-height: 1.75;
+      color: var(--text-sub);
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+
+    .memo-md > :first-child { margin-top: 0; }
+    .memo-md > :last-child { margin-bottom: 0; }
+
+    .memo-md h1, .memo-md h2, .memo-md h3,
+    .memo-md h4, .memo-md h5, .memo-md h6 {
+      margin: 20px 0 8px;
+      font-weight: 700;
+      line-height: 1.5;
+      color: var(--text-main);
+    }
+
+    .memo-md h1 { font-size: 19px; }
+    .memo-md h2 { font-size: 17px; }
+    .memo-md h3 { font-size: 15.5px; }
+    .memo-md h4, .memo-md h5, .memo-md h6 { font-size: 14.5px; }
+    .memo-md p { margin: 10px 0; }
+    .memo-md strong { font-weight: 700; color: var(--text-main); }
+    .memo-md ul, .memo-md ol { margin: 10px 0; padding-left: 22px; }
+    .memo-md li { margin-bottom: 4px; }
+    .memo-md li::marker { color: var(--text-muted); }
+    /* 할 일 목록(- [ ]): GitHub처럼 글머리표 대신 체크박스를 그 자리에 둔다 */
+    .memo-md li:has(> input[type="checkbox"]) { list-style: none; }
+    .memo-md li > input[type="checkbox"] { margin: 0 6px 0 -20px; vertical-align: -1px; }
+    .memo-md img { max-width: 100%; }
+
+    .memo-md hr {
+      margin: 18px 0;
+      border: none;
+      border-top: 1px solid var(--rule);
+    }
+
+    .memo-md blockquote {
+      margin: 12px 0;
+      padding: 0 0 0 14px;
+      border-left: 2px solid var(--rule-strong);
+      color: var(--text-muted);
+    }
+
+    .memo-md blockquote > :first-child { margin-top: 0; }
+    .memo-md blockquote > :last-child { margin-bottom: 0; }
+
+    /* 표가 넓으면 메모 칸 안에서만 가로로 넘긴다 */
+    .memo-md table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+      margin: 14px 0;
+      border-collapse: collapse;
+      border-top: 1.5px solid var(--text-main);
+      border-bottom: 1.5px solid var(--text-main);
+      font-size: 13.5px;
+      line-height: 1.6;
+    }
+
+    .memo-md th {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--rule-strong);
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .memo-md td {
+      padding: 6px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .memo-md tbody tr + tr td { border-top: 1px solid var(--rule); }
+
+    .memo-md code:not(pre code) {
+      padding: 2px 5px;
+      border-radius: 2px;
+      background: var(--code-inline-bg);
+      color: var(--code-inline-color);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.86em;
+    }
+
+    .memo-md pre {
+      margin: 12px 0;
+      padding: 12px 14px;
+      overflow-x: auto;
+      border-radius: 2px;
+      background: var(--code-block-bg);
+      color: var(--code-block-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      tab-size: 2;
+      word-break: normal;
+      overflow-wrap: normal;
+    }
+
+    .memo-md pre code {
+      font-family: inherit;
+      color: inherit;
+    }
+
+    .memo-md a {
+      color: var(--primary);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    /* Prism 토큰 (질문 화면과 같은 색) */
+    .memo-md .token.comment, .memo-md .token.prolog, .memo-md .token.doctype, .memo-md .token.cdata { color: var(--syntax-comment); font-style: italic; }
+    .memo-md .token.punctuation { color: var(--syntax-punctuation); }
+    .memo-md .token.property, .memo-md .token.tag, .memo-md .token.boolean, .memo-md .token.constant, .memo-md .token.symbol { color: var(--syntax-tag); }
+    .memo-md .token.number { color: var(--syntax-number); }
+    .memo-md .token.string, .memo-md .token.char, .memo-md .token.builtin, .memo-md .token.inserted { color: var(--syntax-string); }
+    .memo-md .token.operator, .memo-md .token.entity, .memo-md .token.url { color: var(--syntax-operator); }
+    .memo-md .token.keyword { color: var(--syntax-keyword); font-weight: 600; }
+    .memo-md .token.function, .memo-md .token.class-name { color: var(--syntax-function); }
+    .memo-md .token.variable { color: var(--syntax-variable); }
+
     .memo-footer {
       display: flex;
       align-items: center;
@@ -1538,7 +1742,13 @@
 
   <template id="editor-template">
     <div class="memo-editor">
+      <div class="memo-tabs" role="group" aria-label="메모 보기">
+        <button type="button" class="memo-tab" data-action="memo-write" aria-pressed="true">작성</button>
+        <button type="button" class="memo-tab" data-action="memo-preview" aria-pressed="false">미리보기</button>
+        <span class="memo-tabs-hint">마크다운 사용 가능</span>
+      </div>
       <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
+      <div class="memo-preview memo-md" hidden></div>
       <div class="memo-footer">
         <div class="memo-info">
           <span class="memo-count"></span>
@@ -2893,6 +3103,150 @@
       textarea.style.height = `${textarea.scrollHeight + 2}px`;
     }
 
+    // ---------- 메모 마크다운 미리보기 ----------
+    // 질문 화면과 같은 파일·버전·integrity를 쓴다 (브라우저 캐시를 같이 쓰고, CDN 파일이 바뀌면 실행하지 않는다).
+    // 미리보기를 처음 열 때만 불러온다. jsx는 javascript 뒤, tsx는 jsx와 typescript 뒤에 와야 한다.
+    const MARKDOWN_SCRIPTS = [
+      ['https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js', 'sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js', 'sha384-06z5D//U/xpvxZHuUz92xBvq3DqBBFi7Up53HRrbV7Jlv7Yvh/MZ7oenfUe9iCEt'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js', 'sha384-D44bgYYKvaiDh4cOGlj1dbSDpSctn2FSUj118HZGmZEShZcO2v//Q5vvhNy206pp'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js', 'sha384-PeOqKNW/piETaCg8rqKFy+Pm6KEk7e36/5YZE5XO/OaFdO+/Aw3O8qZ9qDPKVUgx'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js', 'sha384-nnKpKrv4RkNTjD3hNwkWsmHW8LBti5JWyAWAgeo8iC4QkFQn2Yn2Kj4mOTTNoI9V'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js', 'sha384-ZzE8Y/KUKzSD+AEsQQvM2PdJSEVs/T/6LE/nSetJ0ReWEE/ZgpKNBSUkTRI3Dc7E'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js', 'sha384-RhrmFFMb0ZCHImjFMpR/UE3VEtIVTCtNrtKQqXCzqXZNJala02N3UbVhi+qzw3CY'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js', 'sha384-9WmlN8ABpoFSSHvBGGjhvB3E/D8UkNB9HpLJjBQFC2VSQsM1odiQDv4NbEo+7l15'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-graphql.min.js', 'sha384-CfAKPApbQPXLiw2NZvvX89i+xd8VKHk+TfWhnWgmUXxl8Ct6qPN7u30+ATfxibjS'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js', 'sha384-/MKWdycCDliku23mP5sYXbZNuXrzgmQO/jsVxwPFn99dVOaXRyKsqDjarqpueGAp'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js', 'sha384-DioAMZB4yk91W6LuFit5wJDh8c5Ov09f/MBvja94y0PodMqTpTZeBeejqpRUru7D'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js', 'sha384-AKAiycghK0jDCjD+aavMHzDkLzRR7Yzcwh3+xL/295cvyVMe+cxQfyQC8xxGGcI8'],
+      ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sass.min.js', 'sha384-vtpsGXKlAgv7RZuBJVa1roUNFN9110ZNgbj9o6S42DEC9jn43k4IHYtkqaoOODTS'],
+    ];
+    const loadedScripts = new Set();
+    let markdownLoading = null;
+    let memoMarked = null;
+
+    function loadScript(src, integrity) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.integrity = integrity;
+        script.crossOrigin = 'anonymous';
+        script.async = false; // 받는 건 동시에, 실행은 넣은 순서대로
+        script.onload = () => {
+          loadedScripts.add(src);
+          resolve();
+        };
+        script.onerror = () => {
+          script.remove();
+          reject(new Error(`스크립트를 불러오지 못했어요: ${src}`));
+        };
+        document.head.append(script);
+      });
+    }
+
+    // 실패하면 다음에 미리보기를 누를 때 아직 못 받은 파일만 다시 받는다
+    function loadMarkdown() {
+      if (window.marked && loadedScripts.size === MARKDOWN_SCRIPTS.length) return Promise.resolve();
+      markdownLoading ??= (async () => {
+        // Prism이 불러오자마자 페이지의 모든 코드를 스스로 칠하지 않게 한다 (미리보기 안에서만 칠한다)
+        window.Prism ??= { manual: true };
+        const pending = MARKDOWN_SCRIPTS.filter(([src]) => !loadedScripts.has(src));
+        const results = await Promise.allSettled(pending.map(([src, integrity]) => loadScript(src, integrity)));
+        // 코드 색칠(Prism)이 일부 빠져도 마크다운 자체는 보여준다
+        if (!window.marked) throw results.find((r) => r.status === 'rejected')?.reason || new Error('marked를 불러오지 못했어요');
+      })().finally(() => {
+        markdownLoading = null;
+      });
+      return markdownLoading;
+    }
+
+    const escapeHtml = (text) => text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+
+    // 링크·이미지 주소는 http(s)·mailto와 상대 주소만 남긴다 (javascript: 같은 주소로 코드가 실행되지 않게)
+    function isSafeUrl(url) {
+      const scheme = url.replace(/[\u0000- \u007f]/g, '').match(/^([a-z][a-z0-9+.-]*):/i)?.[1].toLowerCase();
+      return !scheme || ['http', 'https', 'mailto'].includes(scheme);
+    }
+
+    function sanitizeMarkdown(root) {
+      for (const el of root.querySelectorAll('*')) {
+        for (const { name, value } of [...el.attributes]) {
+          if (name.startsWith('on') || ((name === 'href' || name === 'src') && !isSafeUrl(value))) el.removeAttribute(name);
+        }
+        // 링크를 누르면 새 탭으로 연다 (쓰던 메모가 있는 이 페이지를 떠나지 않게)
+        if (el.matches('a[href]')) {
+          el.target = '_blank';
+          el.rel = 'noopener noreferrer';
+        }
+      }
+    }
+
+    // GitHub에서 .md 파일을 보여주는 방식(GFM, 한 줄 바꿈은 이어 붙임)에 맞춰 그린다
+    function renderMarkdown(container, text) {
+      memoMarked ??= new window.marked.Marked({
+        gfm: true,
+        // 메모 안의 HTML 태그는 실행하지 않고 글자 그대로 보여준다
+        renderer: { html: ({ text: html }) => escapeHtml(html) },
+      });
+      const template = document.createElement('template');
+      template.innerHTML = memoMarked.parse(text);
+      sanitizeMarkdown(template.content);
+      container.replaceChildren(template.content);
+      window.Prism?.highlightAllUnder?.(container);
+    }
+
+    function previewNote(text) {
+      const note = document.createElement('p');
+      note.className = 'memo-preview-note';
+      note.textContent = text;
+      return note;
+    }
+
+    let previewRuns = 0;
+
+    async function renderMemoPreview(editor) {
+      const preview = editor.querySelector('.memo-preview');
+      if (preview.hidden) return;
+      const text = editor.querySelector('textarea').value;
+      if (!text.trim()) {
+        preview.replaceChildren(previewNote('미리 볼 내용이 없어요.'));
+        return;
+      }
+
+      const run = String(++previewRuns);
+      preview.dataset.run = run;
+      if (!window.marked) preview.replaceChildren(previewNote('미리보기를 준비하는 중…'));
+      try {
+        await loadMarkdown();
+      } catch (err) {
+        console.error(err);
+        if (preview.dataset.run === run) preview.replaceChildren(previewNote('미리보기를 불러오지 못했어요. 연결을 확인하고 미리보기를 다시 눌러주세요.'));
+        return;
+      }
+      // 불러오는 사이 작성으로 돌아갔거나 더 나중에 그리기 시작했으면 그대로 둔다
+      if (preview.hidden || preview.dataset.run !== run) return;
+      try {
+        renderMarkdown(preview, text);
+      } catch (err) {
+        console.error(err);
+        preview.replaceChildren(previewNote('이 메모는 미리보기로 그리지 못했어요.'));
+      }
+    }
+
+    function setMemoMode(row, mode) {
+      const editor = editorOf(row);
+      if (!editor) return;
+      const textarea = editor.querySelector('textarea');
+      const preview = editor.querySelector('.memo-preview');
+      textarea.hidden = mode === 'preview';
+      preview.hidden = mode !== 'preview';
+      for (const tab of editor.querySelectorAll('.memo-tab')) {
+        tab.setAttribute('aria-pressed', String(tab.dataset.action === `memo-${mode}`));
+      }
+      if (mode === 'preview') renderMemoPreview(editor);
+      else textarea.focus();
+    }
+
     const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
     function updateEditor(row) {
@@ -3013,6 +3367,7 @@
         textarea.value = store.item(row.dataset.id).memo || '';
         autosize(textarea);
         updateEditor(row);
+        renderMemoPreview(editorOf(row)); // 미리보기 중이면 새 내용으로 다시 그린다
       }
       updateStats();
       renderRepoCard();
@@ -3056,6 +3411,8 @@
         else if (action === 'memo-close') closeEditor(row);
         else if (action === 'memo-save') saveMemo(row);
         else if (action === 'memo-toggle') setMemoExpanded(row, !row.classList.contains('memo-expanded'));
+        else if (action === 'memo-write') setMemoMode(row, 'write');
+        else if (action === 'memo-preview') setMemoMode(row, 'preview');
       });
 
       els.list.addEventListener('input', (e) => {
