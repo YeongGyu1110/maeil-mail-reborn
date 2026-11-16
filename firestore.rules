@@ -1,11 +1,14 @@
 rules_version = '2';
 
-// 사용자당 문서 1개: users/{uid} = {
-//   items: { "fe-1": { level, starred, memo, memoAt } },
-//   memoRepo: { id, fullName }
-// }
+// 사용자당 기본 문서 1개 + 메모 묶음 문서 최대 4개:
+//   users/{uid} = {
+//     items: { "fe-1": { level, starred } },
+//     memoRepo: { id, fullName }
+//   }
+//   users/{uid}/memos/{0~3} = { "fe-1": { memo, memoAt } }  (질문 번호 % 4로 묶음을 고른다)
+// 메모를 기본 문서에서 떼어 낸 것은 문서 하나의 최대 크기(1 MiB)를 메모가 다 쓰지 않게 하려는 것이다.
 // 개인용 서비스라 소유자 GitHub 계정만 읽고 쓸 수 있다. 다른 계정은 로그인해도 거부되어 무료 한도를 쓸 수 없다.
-// 본인 문서만 읽고 쓸 수 있고, 목록 조회(list)와 삭제는 막는다.
+// 본인 문서만 읽고 쓸 수 있고, 삭제는 막는다 (메모를 지울 때는 문서가 아니라 필드를 지운다).
 service cloud.firestore {
   match /databases/{database}/documents {
     // 허용할 GitHub 사용자 번호 (https://api.github.com/users/<아이디> 의 id). 175471172 = YeongGyu1110
@@ -19,12 +22,22 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
+      // 기본 문서는 하나라 목록 조회(list)는 막는다
       allow get: if isOwner() && request.auth.uid == uid;
       allow create, update: if isOwner()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['items', 'memoRepo'])
         && (!('items' in request.resource.data) || request.resource.data.items is map)
         && (!('memoRepo' in request.resource.data) || request.resource.data.memoRepo is map);
+
+      // 메모 묶음: 접속할 때 묶음을 한 번에 읽으므로(getDocs) 목록 조회도 허용한다.
+      // 묶음 수(index.html의 MEMO_SHARDS)를 바꾸면 아래 목록도 같이 바꾼다.
+      match /memos/{shard} {
+        allow get, list: if isOwner() && request.auth.uid == uid;
+        allow create, update: if isOwner()
+          && request.auth.uid == uid
+          && shard in ['0', '1', '2', '3'];
+      }
     }
   }
 }

@@ -576,7 +576,9 @@
 
     .save-state:empty { display: none; }
     .save-state[data-state="saved"] { color: var(--primary); }
-    .save-state[data-state="failed"] { color: var(--danger); }
+    .save-state[data-state="failed"],
+    .save-state[data-state="unkept"],
+    .save-state[data-state="full"] { color: var(--danger); }
 
     /* 문서 지면: 테두리 대신 면 대비와 옅은 그림자로 종이를 구분 */
     .doc-container {
@@ -1518,7 +1520,10 @@
     import { SEARCH_SYNONYMS } from './search-synonyms.js';
 
     const FIREBASE_VERSION = '10.14.1';
-    const MEMO_MAX = 1000;
+    const MEMO_MAX = 3000;
+    // 메모는 기본 문서와 따로 묶음 문서 4개(users/{uid}/memos/0~3)에 나눠 담는다. 개수를 바꾸면 firestore.rules도 같이 바꾼다
+    const MEMO_SHARDS = 4;
+    const MEMO_FIELDS = ['memo', 'memoAt'];
     const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
     const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
     const RETRY_MAX = 10 * 60 * 1000;
@@ -1582,8 +1587,14 @@
       try { return JSON.parse(window[type].getItem(key)); } catch { return null; }
     }
 
+    // 저장 공간이 부족하거나 저장소를 쓸 수 없으면 false를 돌려준다
     function writeStore(type, key, value) {
-      try { window[type].setItem(key, JSON.stringify(value)); } catch { /* 저장소를 쓸 수 없는 환경 */ }
+      try {
+        window[type].setItem(key, JSON.stringify(value));
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     function removeStore(type, key) {
@@ -1594,6 +1605,10 @@
     // items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000 } }
     // memoRepo: { id, fullName: "owner/name" } (GitHub 로그인 사용자만)
     // 미학습은 level이 없고, 별표가 없으면 starred가 없다. patch의 null은 해당 필드를 지운다는 뜻이다.
+    // 화면에서는 메모까지 한 items로 다루고, Firestore에 쓸 때만 메모를 묶음 문서로 나눈다 (createFirestoreBackend).
+
+    // 브라우저 저장소에 쓰지 못했을 때 (게스트 기록 저장)
+    const storageFullError = () => Object.assign(new Error('브라우저 저장 공간이 부족해요'), { code: 'storage-full' });
 
     function applyPatch(items, patch) {
       for (const [id, fields] of Object.entries(patch)) {
@@ -1614,23 +1629,53 @@
       async write(patch) {
         const items = readStore('localStorage', LOCAL_KEY) || {};
         applyPatch(items, patch);
-        writeStore('localStorage', LOCAL_KEY, items);
+        if (!writeStore('localStorage', LOCAL_KEY, items)) throw storageFullError();
       },
       clear() {
         removeStore('localStorage', LOCAL_KEY);
       },
     };
 
-    // Firestore: 사용자당 문서 1개(users/{uid}) → 접속 시 읽기 1회, 변경은 필드 단위 merge 쓰기
+    // 메모가 들어갈 묶음 문서: 질문 번호를 묶음 수로 나눈 나머지 (fe-17 → 17 % 4 → memos/1)
+    function memoShard(id) {
+      return String(Number(id.match(/\d+$/)?.[0] ?? 0) % MEMO_SHARDS);
+    }
+
+    const isMemoField = (key) => MEMO_FIELDS.includes(key);
+
+    // Firestore: 학습 수준·별표는 기본 문서(users/{uid}), 메모는 묶음 문서(users/{uid}/memos/0~3)에 둔다.
+    // 문서 하나의 최대 크기(1 MiB)를 메모가 다 쓰지 않도록 나눈 것이다.
+    // → 접속 시 읽기는 기본 문서 1회 + 메모 묶음 조회(있는 묶음 수만큼, 최대 4회). 변경은 필드 단위 merge 쓰기를 한 번에(batch) 보낸다
     function createFirestoreBackend(uid) {
       const ref = fb.fs.doc(fb.db, 'users', uid);
+      const memosRef = fb.fs.collection(ref, 'memos');
+      const memoRef = (shard) => fb.fs.doc(memosRef, shard);
       const cacheKey = `maeil-cache-${uid}`;
       const snapshotKey = `maeil-snapshot-${uid}`; // 불러오기에 실패했을 때 보여줄 마지막 기록
       const pendingKey = `maeil-pending-${uid}`; // 아직 쓰지 못한 변경 (새로고침해도 남아 다음 접속 때 보낸다)
+      // 묶음으로 옮기지 못하고 기본 문서에 남아 있는 예전 메모의 질문 ID (그 메모를 바꿀 때 기본 문서에서도 지운다)
+      const legacy = new Set();
       const remember = (snapshot) => {
-        writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
-        writeStore('localStorage', snapshotKey, snapshot);
+        // 저장 공간이 부족해 새 사본을 쓰지 못하면, 오래된 사본이 최신 기록처럼 보이지 않게 지운다
+        if (!writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot })) removeStore('sessionStorage', cacheKey);
+        if (!writeStore('localStorage', snapshotKey, snapshot)) removeStore('localStorage', snapshotKey);
       };
+
+      // 묶음 문서를 쓰기 전에는 메모가 기본 문서의 items에 있었다. 불러올 때 남아 있으면 묶음으로 옮긴다.
+      // memos에는 질문마다 이긴 쪽(더 나중에 저장한 메모)이 들어 있어, 기본 문서 쪽이 이긴 메모만 묶음에 쓴다.
+      async function moveLegacyMemos(legacyMemos, memos) {
+        const batch = fb.fs.writeBatch(fb.db);
+        const shards = {};
+        const cleared = {};
+        for (const [id, memo] of Object.entries(legacyMemos)) {
+          cleared[id] = { memo: fb.fs.deleteField(), memoAt: fb.fs.deleteField() };
+          if (memos[id] === memo) (shards[memoShard(id)] ??= {})[id] = memo;
+        }
+        for (const [shard, fields] of Object.entries(shards)) batch.set(memoRef(shard), fields, { merge: true });
+        batch.set(ref, { items: cleared }, { merge: true });
+        await batch.commit();
+        for (const id of Object.keys(legacyMemos)) legacy.delete(id);
+      }
 
       return {
         async load({ fresh = false } = {}) {
@@ -1639,25 +1684,61 @@
             return { items: cached.items, memoRepo: cached.memoRepo || null };
           }
 
-          const snap = await fb.fs.getDoc(ref);
+          const [snap, memoDocs] = await Promise.all([fb.fs.getDoc(ref), fb.fs.getDocs(memosRef)]);
           const doc = snap.exists() ? snap.data() : {};
-          const items = {};
-          for (const [id, item] of Object.entries(doc.items || {})) {
-            if (Object.keys(item).length) items[id] = item;
+
+          const memos = {};
+          for (const memoDoc of memoDocs.docs) {
+            for (const [id, memo] of Object.entries(memoDoc.data())) {
+              if (memo && Object.keys(memo).length) memos[id] = memo;
+            }
           }
+
+          const items = {};
+          const legacyMemos = {};
+          for (const [id, item] of Object.entries(doc.items || {})) {
+            const rest = {};
+            const memo = {};
+            for (const [key, value] of Object.entries(item)) (isMemoField(key) ? memo : rest)[key] = value;
+            if (Object.keys(rest).length) items[id] = rest;
+            if (!Object.keys(memo).length) continue;
+            legacyMemos[id] = memo;
+            legacy.add(id);
+            if (!memos[id] || (memo.memoAt || 0) > (memos[id].memoAt || 0)) memos[id] = memo;
+          }
+          for (const [id, memo] of Object.entries(memos)) items[id] = { ...items[id], ...memo };
+
+          // 옮기지 못해도 기록은 그대로 보여주고, 다음에 불러올 때 다시 옮긴다
+          if (Object.keys(legacyMemos).length) {
+            await moveLegacyMemos(legacyMemos, memos).catch((err) => console.error(err));
+          }
+
           const loaded = { items, memoRepo: doc.memoRepo || null };
           remember(loaded);
           return loaded;
         },
         async write(patch, snapshot) {
-          const changes = {};
+          const main = {};
+          const shards = {};
+          const memoIds = [];
           for (const [id, fields] of Object.entries(patch)) {
-            changes[id] = {};
             for (const [key, value] of Object.entries(fields)) {
-              changes[id][key] = value === null ? fb.fs.deleteField() : value;
+              const target = isMemoField(key) ? (shards[memoShard(id)] ??= {}) : main;
+              (target[id] ??= {})[key] = value === null ? fb.fs.deleteField() : value;
             }
+            if (!Object.keys(fields).some(isMemoField)) continue;
+            memoIds.push(id);
+            // 메모를 지우면 묶음에서 질문 항목째 지운다 (빈 항목이 남지 않게)
+            if (MEMO_FIELDS.every((key) => fields[key] === null)) shards[memoShard(id)][id] = fb.fs.deleteField();
+            // 기본 문서에 남은 예전 메모가 다음에 불러올 때 되살아나지 않게 같이 지운다
+            if (legacy.has(id)) main[id] = { ...main[id], memo: fb.fs.deleteField(), memoAt: fb.fs.deleteField() };
           }
-          await fb.fs.setDoc(ref, { items: changes }, { merge: true });
+
+          const batch = fb.fs.writeBatch(fb.db);
+          if (Object.keys(main).length) batch.set(ref, { items: main }, { merge: true });
+          for (const [shard, memos] of Object.entries(shards)) batch.set(memoRef(shard), memos, { merge: true });
+          await batch.commit();
+          for (const id of memoIds) legacy.delete(id);
           remember(snapshot);
         },
         async saveMemoRepo(repo, snapshot) {
@@ -1670,9 +1751,11 @@
         loadPending() {
           return readStore('localStorage', pendingKey) || {};
         },
+        // 이 기기에 보관하지 못하면(저장 공간 부족 등) false
         savePending(pending) {
-          if (Object.keys(pending).length) writeStore('localStorage', pendingKey, pending);
-          else removeStore('localStorage', pendingKey);
+          if (Object.keys(pending).length) return writeStore('localStorage', pendingKey, pending);
+          removeStore('localStorage', pendingKey);
+          return true;
         },
         // 로그아웃할 때 기록 사본을 지운다. 쓰지 못한 변경(pending)은 다음 로그인 때 보내려고 남긴다.
         forget() {
@@ -1687,6 +1770,7 @@
       items: {},
       memoRepo: null,
       pending: {},
+      pendingKept: true, // 쓰지 못한 변경을 이 기기에 보관했는지 (저장 공간이 부족하면 페이지를 닫는 순간 사라진다)
       saving: null,
       timer: 0,
       loadedAt: 0,
@@ -1721,6 +1805,7 @@
       // 아직 쓰지 못한 변경은 이 기기에서 더 나중에 바꾼 것이므로 불러온 기록 위에 덮는다
       setLoaded({ items, memoRepo }) {
         this.pending = this.backend.loadPending?.() || {};
+        this.pendingKept = true; // 이 기기에서 읽어 온 대기열이다
         applyPatch(items, this.pending);
         this.items = items;
         this.memoRepo = memoRepo;
@@ -1735,7 +1820,11 @@
       update(id, fields) {
         applyPatch(this.items, { [id]: fields });
         this.pending[id] = { ...this.pending[id], ...fields };
-        this.backend.savePending?.(this.pending);
+        this.keepPending();
+      },
+
+      keepPending() {
+        this.pendingKept = this.backend.savePending?.(this.pending) !== false;
       },
 
       async flush() {
@@ -1757,7 +1846,7 @@
           }
           throw err;
         } finally {
-          this.backend.savePending?.(this.pending);
+          this.keepPending();
         }
       },
 
@@ -1776,7 +1865,9 @@
         pending: '저장 중…',
         saved: '저장됨',
         failed: '저장 실패 · 이 기기에 보관하고 다시 시도하는 중',
+        unkept: '저장 실패 · 다시 시도하는 중 (저장 공간이 부족해 이 기기에 보관 못 함)',
         held: '저장 거부됨 · 이 기기에 보관 중',
+        full: '저장 실패 · 브라우저 저장 공간 부족',
       }[state] || '';
     }
 
@@ -1784,6 +1875,8 @@
     const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
 
     function saveErrorMessage(err) {
+      if (err?.code === 'storage-full') return '브라우저 저장 공간이 부족해 저장하지 못했어요. 로그인하면 계정에 저장할 수 있어요.';
+      if (!store.pendingKept) return '저장하지 못했고, 브라우저 저장 공간이 부족해 이 기기에도 보관하지 못했어요. 저장될 때까지 페이지를 닫지 말아주세요.';
       if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
       if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
       return '저장하지 못했어요. 바꾼 내용은 이 기기에 보관했다가 연결되면 저장할게요.';
@@ -1794,11 +1887,16 @@
       console.error(err);
       if (!saveErrorShown) toast(saveErrorMessage(err), 'error', 5000);
       saveErrorShown = true;
+      // 게스트 기록을 브라우저에 쓰지 못함: 다시 시도해도 같으니 다음 변경 때 다시 쓴다
+      if (err?.code === 'storage-full') {
+        renderSaveState('full');
+        return;
+      }
       if (isPermanentError(err)) {
         renderSaveState('held');
         return;
       }
-      renderSaveState('failed');
+      renderSaveState(store.pendingKept ? 'failed' : 'unkept');
       clearTimeout(store.timer);
       store.timer = setTimeout(flushInBackground, retryDelay);
       retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
@@ -2809,7 +2907,7 @@
       updateEditor(row);
     }
 
-    // 다른 기기에서 바꾼 내용을 보도록, 오래 자리를 비웠다 돌아오면 다시 읽는다 (Firestore 읽기 1회)
+    // 다른 기기에서 바꾼 내용을 보도록, 오래 자리를 비웠다 돌아오면 다시 읽는다 (Firestore 읽기: 기본 문서 1회 + 메모 묶음 최대 4회)
     // 계정 기록을 못 불러온 상태(error)였다면 다시 불러오는 데 성공한 순간 정상으로 돌아온다
     async function refreshIfStale() {
       if ((accountMode !== 'user' && accountMode !== 'error') || store.saving || hasDirtyEditor()) return;
@@ -2970,9 +3068,10 @@
         else if (document.visibilityState === 'visible') refreshIfStale();
       });
 
-      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모 편집뿐이다
+      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모 편집과
+      // 저장 공간이 부족해 이 기기에도 보관하지 못한 변경뿐이다
       window.addEventListener('beforeunload', (e) => {
-        if (hasDirtyEditor()) {
+        if (hasDirtyEditor() || (store.busy && !store.pendingKept)) {
           e.preventDefault();
           e.returnValue = '';
         }
