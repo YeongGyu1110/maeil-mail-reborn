@@ -1,0 +1,226 @@
+/* 메모 편집기와 메모 마크다운: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
+   색은 각 화면의 :root 변수(--primary, --rule, --code-*, --syntax-* 등)를, 버튼은 각 화면의 .btn을 쓴다. */
+
+/* 작성 ↔ 미리보기 전환은 hidden 속성으로 한다. 아래에서 display를 정한 칸도 숨도록 우선한다 */
+.memo-editor [hidden] { display: none !important; }
+
+.memo-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 2px;
+  background: var(--bg-subtle);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.memo-editor textarea:focus {
+  outline: 1.5px solid var(--primary);
+  outline-offset: -1.5px;
+}
+
+.memo-editor textarea::placeholder { color: var(--text-muted); }
+
+/* 작성 / 미리보기 전환 */
+.memo-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.memo-tab {
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.memo-tab:hover,
+.memo-tab[aria-pressed="true"] {
+  background: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+.memo-tabs-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 미리보기: 질문 화면처럼 종이 위에 그린 문서로 보이도록 면 대신 얇은 테두리만 둔다 */
+.memo-preview {
+  min-height: 120px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.memo-preview-note {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* 메모 마크다운: 질문 화면 본문과 같은 문서식 타이포그래피를 메모 크기로 줄였다 */
+.memo-md {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--text-sub);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.memo-md > :first-child { margin-top: 0; }
+.memo-md > :last-child { margin-bottom: 0; }
+
+.memo-md h1, .memo-md h2, .memo-md h3,
+.memo-md h4, .memo-md h5, .memo-md h6 {
+  margin: 20px 0 8px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-main);
+}
+
+.memo-md h1 { font-size: 19px; }
+.memo-md h2 { font-size: 17px; }
+.memo-md h3 { font-size: 15.5px; }
+.memo-md h4, .memo-md h5, .memo-md h6 { font-size: 14.5px; }
+.memo-md p { margin: 10px 0; }
+.memo-md strong { font-weight: 700; color: var(--text-main); }
+.memo-md ul, .memo-md ol { margin: 10px 0; padding-left: 22px; }
+.memo-md li { margin-bottom: 4px; }
+.memo-md li::marker { color: var(--text-muted); }
+/* 할 일 목록(- [ ]): GitHub처럼 글머리표 대신 체크박스를 그 자리에 둔다 */
+.memo-md li:has(> input[type="checkbox"]) { list-style: none; }
+.memo-md li > input[type="checkbox"] { margin: 0 6px 0 -20px; vertical-align: -1px; }
+.memo-md img { max-width: 100%; }
+
+.memo-md hr {
+  margin: 18px 0;
+  border: none;
+  border-top: 1px solid var(--rule);
+}
+
+.memo-md blockquote {
+  margin: 12px 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--rule-strong);
+  color: var(--text-muted);
+}
+
+.memo-md blockquote > :first-child { margin-top: 0; }
+.memo-md blockquote > :last-child { margin-bottom: 0; }
+
+/* 표가 넓으면 메모 칸 안에서만 가로로 넘긴다 */
+.memo-md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+  border-collapse: collapse;
+  border-top: 1.5px solid var(--text-main);
+  border-bottom: 1.5px solid var(--text-main);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.memo-md th {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--rule-strong);
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.memo-md td {
+  padding: 6px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.memo-md tbody tr + tr td { border-top: 1px solid var(--rule); }
+
+.memo-md code:not(pre code) {
+  padding: 2px 5px;
+  border-radius: 2px;
+  background: var(--code-inline-bg);
+  color: var(--code-inline-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.86em;
+}
+
+.memo-md pre {
+  margin: 12px 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: 2px;
+  background: var(--code-block-bg);
+  color: var(--code-block-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.memo-md pre code {
+  font-family: inherit;
+  color: inherit;
+}
+
+.memo-md a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* Prism 토큰 (질문 화면과 같은 색) */
+.memo-md .token.comment, .memo-md .token.prolog, .memo-md .token.doctype, .memo-md .token.cdata { color: var(--syntax-comment); font-style: italic; }
+.memo-md .token.punctuation { color: var(--syntax-punctuation); }
+.memo-md .token.property, .memo-md .token.tag, .memo-md .token.boolean, .memo-md .token.constant, .memo-md .token.symbol { color: var(--syntax-tag); }
+.memo-md .token.number { color: var(--syntax-number); }
+.memo-md .token.string, .memo-md .token.char, .memo-md .token.builtin, .memo-md .token.inserted { color: var(--syntax-string); }
+.memo-md .token.operator, .memo-md .token.entity, .memo-md .token.url { color: var(--syntax-operator); }
+.memo-md .token.keyword { color: var(--syntax-keyword); font-weight: 600; }
+.memo-md .token.function, .memo-md .token.class-name { color: var(--syntax-function); }
+.memo-md .token.variable { color: var(--syntax-variable); }
+
+.memo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.memo-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.memo-count { font-variant-numeric: tabular-nums; }
+.memo-github.is-error { color: var(--danger); }
+
+.memo-buttons {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}

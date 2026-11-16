@@ -36,6 +36,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sass.min.js" integrity="sha384-vtpsGXKlAgv7RZuBJVa1roUNFN9110ZNgbj9o6S42DEC9jn43k4IHYtkqaoOODTS" crossorigin="anonymous"></script>
 
   <link rel="icon" href="../favicon.png" type="image/png">
+  <link rel="stylesheet" href="../memo.css">
 
   <style>
     :root {
@@ -245,9 +246,36 @@
       transition: background-color 0.15s, color 0.15s;
     }
 
-    .btn:hover {
+    .btn:hover:not(:disabled) {
       background-color: var(--bg-hover);
       color: var(--text-main);
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    /* 메모 저장 버튼 (질문 목록과 같은 모양) */
+    .btn-primary {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    [data-theme="dark"] .btn-primary { color: #0c1512; }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--primary);
+      color: #ffffff;
+      filter: brightness(1.08);
+    }
+
+    [data-theme="dark"] .btn-primary:hover:not(:disabled) { color: #0c1512; }
+
+    .btn-sm {
+      height: 28px;
+      padding: 0 8px;
+      font-size: 12.5px;
     }
 
     .btn-icon-only {
@@ -470,6 +498,56 @@
     .token.function, .token.class-name { color: var(--syntax-function); }
     .token.variable { color: var(--syntax-variable); }
 
+    /* 내 메모: 답을 읽으면서 바로 쓰는 칸. 왼쪽 세로줄은 질문 목록의 '오늘 받은 질문'과 같은 표시다 (편집기 모양은 memo.css) */
+    .memo-section {
+      margin-top: 48px;
+      padding: 2px 0 2px 16px;
+      border-left: 2px solid var(--primary);
+    }
+
+    .memo-section[hidden] { display: none; }
+
+    .memo-section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 2px 12px;
+      margin-bottom: 10px;
+    }
+
+    .memo-section-title {
+      margin: 0;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .memo-section-status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .memo-account[data-state="error"] { color: var(--danger); }
+
+    .memo-save-state { font-weight: 600; }
+    .memo-save-state:empty { display: none; }
+    .memo-save-state[data-state="saved"] { color: var(--primary); }
+    .memo-save-state[data-state="failed"],
+    .memo-save-state[data-state="unkept"],
+    .memo-save-state[data-state="full"] { color: var(--danger); }
+
+    .memo-loading {
+      margin: 0;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .memo-section + .doc-pagination { margin-top: 40px; }
+
     /* 문서 꼬리: 이전 / 다음 질문 */
     .doc-pagination {
       display: grid;
@@ -540,6 +618,7 @@
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%) translateY(12px);
+      max-width: calc(100% - 32px);
       background: var(--text-main);
       color: var(--bg-paper);
       padding: 8px 16px;
@@ -555,6 +634,11 @@
     .toast.show {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
+    }
+
+    .toast[data-tone="error"] {
+      background: var(--danger);
+      color: #ffffff;
     }
 
     @media (max-width: 640px) {
@@ -581,7 +665,7 @@
     /* 인쇄: 지면만 남긴다 */
     @media print {
       body { background: #ffffff; }
-      .top-nav, .doc-pagination, .code-copy-btn, .toast { display: none !important; }
+      .top-nav, .memo-section, .doc-pagination, .code-copy-btn, .toast { display: none !important; }
       .page-wrapper { max-width: none; margin: 0; padding: 0; }
       .doc-container { box-shadow: none; padding: 0; }
       #content pre { white-space: pre-wrap; }
@@ -651,6 +735,20 @@
         <div class="skeleton skeleton-line" style="width: 80%;"></div>
       </section>
 
+      <!-- 내 메모: 답을 읽으면서 바로 쓴다. 저장은 질문 목록과 같은 코드(memo-core.js)로 같은 곳에 한다 -->
+      <section id="memo" class="memo-section" aria-labelledby="memo-heading" hidden>
+        <div class="memo-section-head">
+          <h2 id="memo-heading" class="memo-section-title">내 메모</h2>
+          <div class="memo-section-status">
+            <span id="memo-account" class="memo-account"></span>
+            <span id="memo-save-state" class="memo-save-state" role="status"></span>
+          </div>
+        </div>
+        <div id="memo-body">
+          <p class="memo-loading">메모를 불러오는 중…</p>
+        </div>
+      </section>
+
       <!-- 이전/다음 질문 네비게이션 -->
       <nav class="doc-pagination" id="doc-pagination" style="display: none;" aria-label="이전문서/다음문서 탐색">
         <a id="prev-link" class="page-nav-card prev" href="#" style="visibility: hidden;">
@@ -682,12 +780,20 @@
       });
     }
 
-    function showToast(message) {
+    let toastTimer = 0;
+
+    function showToast(message, tone = 'info', duration = 2200) {
       const toast = document.getElementById('toast');
       toast.textContent = message;
+      toast.dataset.tone = tone;
       toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 2200);
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
     }
+
+    // 본문을 다 그리면 질문 번호와 제목을 넘겨준다 (메모 스크립트가 이것을 기다렸다가 메모 칸을 연다)
+    let resolveQuestion;
+    window.questionReady = new Promise((resolve) => { resolveQuestion = resolve; });
 
     const AREAS = {
       fe: { dir: 'frontend', name: '프론트엔드' },
@@ -732,6 +838,9 @@
         document.getElementById('content').innerHTML = marked.parse(contentMd);
         Prism.highlightAll();
         addCopyButtons();
+
+        // 본문을 그린 뒤에 메모 칸을 연다 (아래 메모 스크립트가 기다린다)
+        resolveQuestion({ id: q, title: currentTitle });
 
         if (currentIndex !== -1) {
           const paginationEl = document.getElementById('doc-pagination');
@@ -812,6 +921,204 @@
 
     initTheme();
     loadContent();
+  </script>
+
+  <!-- 내 메모: 저장·불러오기·GitHub 커밋은 질문 목록과 같은 코드(memo-core.js)를 쓴다.
+       로그인은 질문 목록에서 하고, 이 화면은 그 로그인 상태를 그대로 이어받는다. -->
+  <script type="module">
+    import {
+      account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
+      STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground,
+      fb, firebaseConfigured, loadFirebase,
+      createEditor, isEditorDirty, autosize, updateEditor, setEditorMode, resetEditor, saveMemo,
+    } from '../memo-core.js';
+
+    const els = {
+      section: document.getElementById('memo'),
+      account: document.getElementById('memo-account'),
+      saveState: document.getElementById('memo-save-state'),
+      body: document.getElementById('memo-body'),
+    };
+    let question = null; // { id, title }
+    let editor = null;
+
+    function renderAccount(mode) {
+      account.mode = mode;
+      const user = account.user;
+      const name = user ? user.displayName || user.email || 'GitHub 사용자' : '';
+      els.account.textContent = {
+        unconfigured: '이 브라우저에만 저장돼요',
+        unavailable: 'Firebase를 불러오지 못해 이 브라우저에만 저장해요',
+        guest: '이 브라우저에만 저장돼요 · 로그인은 질문 목록에서',
+        user: `${name} 계정에 저장돼요`,
+        error: '계정 기록을 불러오지 못했어요 · 바꾼 내용은 연결되면 저장해요',
+        denied: '이 계정은 기록 동기화가 허용되지 않았어요 · 이 기기에만 보관돼요',
+      }[mode];
+      els.account.dataset.state = ['error', 'unavailable', 'denied'].includes(mode) ? 'error' : '';
+    }
+
+    function renderSaveState(state) {
+      els.saveState.dataset.state = state;
+      els.saveState.textContent = SAVE_STATE_TEXT[state] || '';
+    }
+
+    hooks.toast = (message, tone, duration) => showToast(message, tone, duration);
+    hooks.renderSaveState = renderSaveState;
+    hooks.afterRetry = () => {
+      if (account.mode === 'error') refreshIfStale(); // 쓰기가 됐으니 기록도 다시 불러와 본다
+    };
+
+    // 질문 목록의 initData·switchUser와 같은 순서로 기록을 불러온다 (이 브라우저 기록을 계정으로 옮기는 일은 질문 목록이 한다)
+    async function initAccount() {
+      if (!firebaseConfigured) {
+        await store.use(localBackend);
+        renderAccount('unconfigured');
+        return;
+      }
+      try {
+        await loadFirebase();
+      } catch (err) {
+        console.error(err);
+        await store.use(localBackend);
+        renderAccount('unavailable');
+        return;
+      }
+      await new Promise((resolve) => {
+        fb.auth.onAuthStateChanged(fb.authInstance, async (user) => {
+          await switchUser(user);
+          resolve();
+        });
+      });
+    }
+
+    // 다른 탭에서 로그인·로그아웃해도 불린다
+    async function switchUser(user) {
+      await store.flush().catch(() => {});
+      store.backend.forget?.();
+      account.user = user;
+
+      if (!user) {
+        await store.use(localBackend);
+        renderAccount('guest');
+      } else {
+        const backend = createFirestoreBackend(user.uid);
+        try {
+          await store.use(backend);
+          renderAccount('user');
+        } catch (err) {
+          console.error(err);
+          store.useOffline(backend);
+          // 규칙에서 거부됨(소유자 계정이 아님): 동기화하지 않고 이 기기에만 보관한다
+          renderAccount(err?.code === 'permission-denied' ? 'denied' : 'error');
+        }
+        // 지난 접속에서 쓰지 못한 변경이 남아 있으면 보낸다
+        if (store.busy && account.mode !== 'denied') flushInBackground();
+      }
+
+      // 계정이 바뀌면 그 계정의 메모를 보여준다 (고치던 내용이 있으면 그대로 둔다)
+      if (editor) isEditorDirty(editor) ? updateEditor(editor) : resetEditor(editor);
+    }
+
+    function renderEditor() {
+      // 늘 펼쳐 두는 칸이라 닫기 버튼을 두지 않고, 글을 읽는 중에 커서를 가져가지 않는다
+      editor = createEditor(question.id, { closable: false });
+      els.body.replaceChildren(editor);
+      updateEditor(editor);
+      autosize(editor.querySelector('textarea'));
+    }
+
+    function save() {
+      return saveMemo(editor, { title: question.title });
+    }
+
+    function bindEvents() {
+      els.body.addEventListener('click', (e) => {
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        if (action === 'memo-save') save();
+        else if (action === 'memo-write') setEditorMode(editor, 'write');
+        else if (action === 'memo-preview') setEditorMode(editor, 'preview');
+      });
+
+      els.body.addEventListener('input', (e) => {
+        if (!e.target.matches('.memo-editor textarea')) return;
+        autosize(e.target);
+        updateEditor(editor);
+      });
+
+      els.body.addEventListener('keydown', (e) => {
+        if (!e.target.matches('.memo-editor textarea')) return;
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          if (isEditorDirty(editor)) save();
+        }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown && account.mode !== 'denied') flushInBackground();
+        else if (document.visibilityState === 'visible') refreshIfStale();
+      });
+
+      // 다른 탭(질문 목록 등)이 기록을 쓰면 낡았다고 표시해 두고, 이 탭이 보일 때 다시 읽는다
+      watchOtherTabs(() => {
+        if (document.visibilityState === 'visible') refreshIfStale();
+      });
+
+      // 뒤로가기·앞으로가기로 돌아오면(bfcache) 떠날 때 상태 그대로 보이므로, 그사이 다른 화면에서 저장한 메모를 반영한다
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) reloadRecords({ fresh: false });
+      });
+
+      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모와
+      // 저장 공간이 부족해 이 기기에도 보관하지 못한 변경뿐이다
+      window.addEventListener('beforeunload', (e) => {
+        if (isEditorDirty(editor) || (store.busy && !store.pendingKept)) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+    }
+
+    // 다시 불러온 기록으로 편집기를 고친다. 고치던 메모가 있거나 쓰는 중이면 다음 기회로 미룬다.
+    // fresh가 아니면 탭 단위 캐시가 있을 때 그것을 읽는다 (질문 목록에서 저장한 기록도 캐시에 들어 있다)
+    async function reloadRecords({ fresh = true } = {}) {
+      if (!editor || account.mode === 'denied' || !store.canReload || isEditorDirty(editor)) return;
+      try {
+        await store.refresh({ fresh });
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      // 캐시를 읽은 것만으로는 Firestore에 다시 닿았는지 알 수 없다
+      if (account.mode === 'error' && fresh) {
+        renderAccount('user');
+        if (store.busy) flushInBackground();
+      }
+      resetEditor(editor);
+    }
+
+    // 다른 기기나 다른 탭에서 바꾼 내용을 보도록, 오래 자리를 비웠거나 다른 탭이 기록을 썼으면 돌아올 때 다시 읽는다
+    async function refreshIfStale() {
+      if (Date.now() - store.loadedAt < STALE_AFTER) return;
+      await reloadRecords();
+    }
+
+    // 본문과 기록을 함께 불러온다. 본문을 못 불러오면(없는 질문) 메모 칸을 열지 않는다
+    async function main() {
+      const accountReady = initAccount();
+      question = await window.questionReady;
+      els.section.hidden = false;
+      try {
+        await accountReady;
+      } catch (err) {
+        console.error(err);
+        els.body.querySelector('.memo-loading').textContent = '메모를 불러오지 못했어요. 잠시 후 새로고침해주세요.';
+        return;
+      }
+      renderEditor();
+      bindEvents();
+    }
+
+    main();
   </script>
 </body>
 </html>
