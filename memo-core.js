@@ -643,13 +643,15 @@ const EDITOR_HTML = `
   <div class="memo-tabs" role="group" aria-label="메모 보기">
     <button type="button" class="memo-tab" data-action="memo-write" aria-pressed="true">작성</button>
     <button type="button" class="memo-tab" data-action="memo-preview" aria-pressed="false">미리보기</button>
-    <span class="memo-tabs-hint">마크다운 사용 가능</span>
+    <span class="memo-tabs-meta">
+      <span class="memo-tabs-hint">마크다운 사용 가능</span>
+      <span class="memo-count"></span>
+    </span>
   </div>
   <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
   <div class="memo-preview memo-md" hidden></div>
   <div class="memo-footer">
     <div class="memo-info">
-      <span class="memo-count"></span>
       <span class="memo-saved"></span>
       <span class="memo-github"></span>
     </div>

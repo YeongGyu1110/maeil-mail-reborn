@@ -309,8 +309,8 @@
     /* 전체 구조: 왼쪽 캔버스의 학습 패널 + 오른쪽 문서 지면 */
     .layout {
       display: grid;
-      grid-template-columns: 228px minmax(0, 1fr);
-      gap: 36px;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 40px;
       align-items: start;
       max-width: 1180px;
       margin: 20px auto 72px;
@@ -327,23 +327,69 @@
     }
 
     .side-main,
-    .side-filters,
+    .side-filters {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
     .side-foot {
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 14px;
+      margin-top: 36px;
     }
 
-    .side-foot { margin-top: 24px; }
-
+    /* 패널의 글자는 모두 목록 항목의 글자(안쪽 여백 10px)와 같은 세로줄에 맞춘다 */
     .side-label {
       margin: 0 0 6px;
+      padding: 0 10px;
       font-size: 12px;
       font-weight: 600;
       color: var(--text-muted);
     }
 
+    .side-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .side-head .side-label {
+      margin: 0;
+      padding: 0;
+    }
+
+    .side-foot > *,
+    .progress-group { padding: 0 10px; }
+
+    /* 글자처럼 보이는 작은 버튼 (패널의 '변경') */
+    .link-btn {
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--primary);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .link-btn:hover {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
     /* 진도 */
+    .progress-percent {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+    }
+
     .progress {
       display: flex;
       height: 4px;
@@ -427,7 +473,8 @@
     .dot-review { background: var(--review-bar); }
     .dot-done { background: var(--primary); }
 
-    .star-filter { margin-top: 1px; }
+    /* 별표는 학습 수준과 다른 필터라 살짝 띄워 둔다 */
+    .star-filter { margin-top: 8px; }
     .star-filter svg { color: var(--text-muted); }
     .star-filter[aria-pressed="true"] svg {
       color: var(--star);
@@ -573,11 +620,6 @@
 
     .repo-card-value a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-    #repo-open {
-      margin: 4px 0 0 -8px;
-      color: var(--primary);
-    }
-
     /* 동기화 상태 */
     .sync-status {
       margin: 0;
@@ -645,34 +687,21 @@
       color: var(--text-main);
     }
 
-    /* 오늘 받은 질문: 왼쪽 세로줄 하나로 표시하는 머리글. 메모를 열면 편집기가 세로줄 안쪽에 이어진다 */
+    /* 오늘 받은 질문: 왼쪽 세로줄 하나로 표시하는 머리글. 메모를 열면 편집기가 세로줄 안쪽에 이어진다.
+       윗줄은 머리말과 메모 버튼, 아랫줄은 질문 제목(링크) 한 가지만 둔다 */
     .today {
-      margin-bottom: 32px;
+      margin-bottom: 28px;
       padding: 2px 0 2px 16px;
       border-left: 2px solid var(--primary);
     }
 
-    /* 링크 안에 버튼을 넣을 수 없어, 질문 링크와 메모 버튼을 나란히 둔다 */
     .today-head {
       display: flex;
       align-items: center;
-      gap: 16px;
-    }
-
-    .today-link {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      text-decoration: none;
+      gap: 12px;
+      height: 24px;
     }
-
-    .today-text { min-width: 0; }
-
-    .today .memo-btn { flex-shrink: 0; }
-    .today .memo-editor { margin-left: 0; }
 
     .today-label {
       font-size: 12.5px;
@@ -680,25 +709,44 @@
       color: var(--primary);
     }
 
-    .today-title {
+    .today .memo-btn {
+      flex-shrink: 0;
+      margin-right: -6px;
+      padding: 0 6px;
+      color: var(--text-muted);
+    }
+
+    .today .memo-btn.has-memo { color: var(--primary); }
+
+    .today-link {
+      display: block;
       margin-top: 2px;
       font-size: 17px;
       font-weight: 700;
       line-height: 1.5;
       color: var(--text-main);
+      text-decoration: none;
       word-break: keep-all;
       overflow-wrap: break-word;
-      text-underline-offset: 3px;
     }
 
+    .today-title { text-underline-offset: 3px; }
     .today-link:hover .today-title { text-decoration: underline; }
 
     .today-go {
-      flex-shrink: 0;
-      font-size: 13px;
-      font-weight: 600;
+      display: inline-block;
+      margin-left: 6px;
+      font-weight: 500;
       color: var(--text-muted);
+      transition: transform 0.15s, color 0.15s;
     }
+
+    .today-link:hover .today-go {
+      color: var(--text-main);
+      transform: translateX(2px);
+    }
+
+    .today > .memo-editor { margin: 14px 0 4px; }
 
     /* 검색 */
     .search {
@@ -774,7 +822,7 @@
       color: var(--text-muted);
     }
 
-    /* 질문 색인 */
+    /* 질문 색인: 번호 · 제목 · 표시(학습 수준, 메모, 별표) 세 칸으로 된 문서의 목차 */
     .list {
       list-style: none;
       margin: 0;
@@ -790,25 +838,27 @@
 
     .q-main {
       display: grid;
-      grid-template-columns: 68px minmax(0, 1fr) auto;
+      grid-template-columns: 56px minmax(0, 1fr) auto;
+      grid-template-areas: "num body actions";
       align-items: start;
-      gap: 6px 12px;
+      gap: 2px 16px;
     }
 
     .q-num {
-      display: flex;
-      align-items: center;
-      gap: 7px;
+      grid-area: num;
       height: 24px;
       font-size: 12.5px;
       font-weight: 600;
+      line-height: 24px;
       color: var(--text-muted);
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
 
-    .q-row[data-state="review"] .q-num .dot { background: var(--review-bar); }
-    .q-row[data-state="done"] .q-num .dot { background: var(--primary); }
+    .q-body {
+      grid-area: body;
+      min-width: 0;
+    }
 
     .q-title {
       display: block;
@@ -873,113 +923,165 @@
        글자 모양은 편집기 미리보기와 같은 .memo-md를 쓴다 */
     .q-row.memo-expanded .q-memo-preview { display: none; }
 
+    /* 펼친 메모와 메모 편집기는 제목과 같은 세로줄에서 시작한다 (번호 칸 56px + 간격 16px) */
     .q-memo-full {
-      margin: 8px 0 4px 80px;
-      padding: 12px 14px;
+      margin: 10px 0 4px 72px;
+      padding: 14px 16px;
       border: 1px solid var(--rule);
-      border-radius: 2px;
+      border-radius: 3px;
       /* 마크다운 파서를 받기 전·받지 못했을 때는 원문을 줄바꿈 그대로 보여준다 */
       white-space: pre-wrap;
     }
 
     .q-memo-full.is-rendered { white-space: normal; }
 
+    .q-row > .memo-editor { margin: 10px 0 4px 72px; }
+
+    /* 표시 칸: 학습 수준 칩, 메모, 별표가 행마다 같은 자리에 줄을 맞춰 선다 */
     .q-actions {
+      grid-area: actions;
       display: flex;
       align-items: center;
       gap: 2px;
+      height: 24px;
     }
 
-    /* 학습 수준: 고른 값만 색이 있고, 나머지는 행에 손을 올릴 때 또렷해진다 */
-    .level-seg {
-      display: inline-flex;
+    .level-pick {
+      position: relative;
       margin-right: 6px;
     }
 
-    .level-seg button {
+    /* 학습 수준: 지금 값 하나만 칩으로 보여주고, 누르면 고르는 목록이 열린다 */
+    .level-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 72px;
       height: 24px;
-      padding: 0 7px;
+      padding: 0 6px;
       border: none;
-      border-radius: 2px;
+      border-radius: 3px;
       background: transparent;
       color: var(--text-muted);
       font-family: inherit;
       font-size: 12.5px;
-      font-weight: 500;
+      font-weight: 600;
       white-space: nowrap;
-      opacity: 0.6;
       cursor: pointer;
-      transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+      transition: background-color 0.15s, color 0.15s, box-shadow 0.15s, opacity 0.15s;
     }
 
-    .q-row:hover .level-seg button,
-    .q-row:focus-within .level-seg button { opacity: 1; }
-
-    .level-seg button:hover {
+    .level-chip:hover,
+    .level-chip[aria-expanded="true"] {
       background: var(--bg-subtle);
       color: var(--text-main);
     }
 
-    .level-seg button[aria-pressed="true"] {
-      font-weight: 700;
-      opacity: 1;
-    }
-
-    .level-seg button[data-level="new"][aria-pressed="true"] {
-      background: var(--bg-subtle);
-      color: var(--text-sub);
-    }
-
-    .level-seg button[data-level="review"][aria-pressed="true"] {
+    .q-row[data-state="review"] .level-chip {
       background: var(--review-light);
       color: var(--review);
     }
 
-    .level-seg button[data-level="done"][aria-pressed="true"] {
+    .q-row[data-state="done"] .level-chip {
       background: var(--primary-light);
       color: var(--primary);
     }
 
-    .memo-btn {
-      height: 24px;
-      padding: 0 7px;
+    .q-row:is([data-state="review"], [data-state="done"]) .level-chip:is(:hover, [aria-expanded="true"]) {
+      box-shadow: inset 0 0 0 1px currentColor;
+    }
+
+    /* 학습 수준 목록: 열 때 그 행의 칩 아래로 옮겨 붙이는 목록 하나를 같이 쓴다 */
+    .level-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 50;
+      min-width: 132px;
+      margin: 0;
+      padding: 4px;
+      list-style: none;
+      border-radius: 2px;
+      background: var(--bg-paper);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), 0 12px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .level-menu.open-up {
+      top: auto;
+      bottom: calc(100% + 4px);
+    }
+
+    .level-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 8px;
+      border-radius: 2px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-sub);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .level-option:hover,
+    .level-option:focus {
+      outline: none;
+      background: var(--bg-subtle);
+      color: var(--text-main);
+    }
+
+    .level-option[aria-checked="true"] {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .level-option svg {
+      margin-left: auto;
+      color: var(--primary);
+      visibility: hidden;
+    }
+
+    .level-option[aria-checked="true"] svg { visibility: visible; }
+
+    /* 메모·별표: 글자 없이 아이콘만 두는 정사각 버튼 */
+    .row-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: none;
+      border-radius: 3px;
+      background: transparent;
       color: var(--text-muted);
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+    }
+
+    .row-btn:hover {
+      background: var(--bg-subtle);
+      color: var(--text-main);
     }
 
     .memo-btn.has-memo { color: var(--primary); }
     .memo-btn[aria-expanded="true"] { background: var(--bg-subtle); }
 
-    .star-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      padding: 0;
-      border: none;
-      border-radius: 2px;
-      background: transparent;
-      color: var(--text-muted);
-      opacity: 0.55;
-      cursor: pointer;
-      transition: color 0.15s, background-color 0.15s, opacity 0.15s;
-    }
-
-    .star-btn:hover {
-      background: var(--bg-subtle);
-      opacity: 1;
-    }
-
-    .star-btn[aria-pressed="true"] {
-      color: var(--star);
-      opacity: 1;
-    }
+    .star-btn[aria-pressed="true"],
+    .star-btn[aria-pressed="true"]:hover { color: var(--star); }
 
     .star-btn[aria-pressed="true"] svg { fill: currentColor; }
 
-    /* 메모 편집기: 질문 제목 아래에 이어 쓰는 칸 (편집기 모양은 memo.css) */
-    .memo-editor {
-      margin: 12px 0 4px 80px;
+    /* 마우스를 쓰는 화면에서는 값이 없는 표시(미학습, 메모 없음, 별표 없음)를 행에 손을 올리거나
+       키보드로 들어왔을 때만 보여, 평소에는 표시가 있는 질문만 눈에 띄게 한다 */
+    @media (hover: hover) {
+      .q-row[data-state="new"]:not(:hover):not(:has(:focus-visible)) .level-chip:not([aria-expanded="true"]),
+      .q-row:not(:hover):not(:has(:focus-visible)) .memo-btn:not(.has-memo):not([aria-expanded="true"]),
+      .q-row:not(:hover):not(:has(:focus-visible)) .star-btn[aria-pressed="false"] {
+        opacity: 0;
+      }
     }
 
     .empty {
@@ -1236,17 +1338,19 @@
 
     @media (hover: none) {
       .search-kbd { display: none; }
-      .level-seg button { opacity: 1; }
     }
 
-    /* 지면이 좁으면 학습 수준·메모 버튼을 제목 아래로 내린다 */
-    @container (max-width: 640px) {
-      .q-main { grid-template-columns: 68px minmax(0, 1fr); }
-      .q-actions {
-        grid-column: 2;
-        margin-left: -7px;
+    /* 지면이 좁으면 번호와 표시 칸을 한 줄에 두고, 제목은 그 아래 지면 폭을 다 쓴다 */
+    @container (max-width: 560px) {
+      .q-main {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+          "num actions"
+          "body body";
       }
-      .level-seg { margin-right: auto; }
+      .q-actions { margin-right: -4px; }
+      .q-row > .memo-editor,
+      .q-memo-full { margin-left: 0; }
     }
 
     /* 좁은 화면: 패널을 지면 위아래로 나눠 쌓는다 */
@@ -1269,8 +1373,10 @@
       .side-foot {
         order: 3;
         margin-top: 8px;
-        gap: 16px;
+        gap: 12px;
       }
+      .side-foot > *,
+      .progress-group { padding: 0; }
       .side-group > .side-label { display: none; }
       .side-filters {
         display: grid;
@@ -1312,15 +1418,6 @@
         padding: 28px 20px 16px;
       }
       .doc-header h1 { font-size: 23px; }
-      .today-go { display: none; }
-      .q-main { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-      .q-num { height: 20px; }
-      .q-actions {
-        grid-column: 1;
-        flex-wrap: wrap;
-      }
-      .memo-editor,
-      .q-memo-full { margin-left: 0; }
     }
   </style>
 </head>
@@ -1361,7 +1458,11 @@
     <!-- 학습 패널 -->
     <aside class="side" aria-label="학습 현황과 필터">
       <div class="side-main">
-        <section aria-label="진도">
+        <section class="progress-group" aria-label="학습 진도">
+          <div class="side-head">
+            <p class="side-label">학습 진도</p>
+            <span id="progress-percent" class="progress-percent"></span>
+          </div>
           <div class="progress" aria-hidden="true">
             <span id="progress-done" class="progress-done" style="width: 0"></span>
             <span id="progress-review" class="progress-review" style="width: 0"></span>
@@ -1371,6 +1472,7 @@
 
         <div class="side-filters">
           <section class="side-group" aria-label="학습 수준">
+            <p class="side-label">학습 수준</p>
             <div id="stats" class="stats">
               <button type="button" class="stat" data-filter="all" aria-pressed="true">
                 <span class="stat-label">전체</span>
@@ -1420,12 +1522,14 @@
 
       <div class="side-foot">
         <section id="repo-card" aria-label="메모 저장소" hidden>
-          <p class="side-label">메모 저장소</p>
+          <div class="side-head">
+            <p class="side-label">메모 저장소</p>
+            <button type="button" id="repo-open" class="link-btn">저장소 선택</button>
+          </div>
           <div class="repo-card-row">
             <span class="repo-card-icon" aria-hidden="true"></span>
             <div id="repo-card-value" class="repo-card-value"></div>
           </div>
-          <button type="button" id="repo-open" class="btn btn-sm">저장소 선택</button>
         </section>
 
         <p id="sync-status" class="sync-status">
@@ -1444,15 +1548,16 @@
 
       <section id="today" class="today" aria-label="오늘 받은 질문" hidden>
         <div class="today-head">
-          <a id="today-link" class="today-link q-link">
-            <div class="today-text">
-              <div class="today-label">오늘 받은 질문 · <span id="today-num"></span></div>
-              <div id="today-title" class="today-title"></div>
-            </div>
-            <span class="today-go">읽기 →</span>
-          </a>
-          <button type="button" class="btn btn-sm memo-btn" data-action="memo" aria-expanded="false">메모</button>
+          <span class="today-label">오늘 받은 질문 · <span id="today-num"></span></span>
+          <button type="button" class="btn btn-sm memo-btn" data-action="memo" aria-expanded="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            메모
+          </button>
         </div>
+        <a id="today-link" class="today-link q-link"><span id="today-title" class="today-title"></span><span class="today-go" aria-hidden="true">→</span></a>
       </section>
 
       <label class="search">
@@ -1514,8 +1619,8 @@
   <template id="row-template">
     <li class="q-row" data-state="new">
       <div class="q-main">
-        <div class="q-num"><span class="dot"></span><span class="q-id"></span></div>
-        <div>
+        <div class="q-num q-id"></div>
+        <div class="q-body">
           <a class="q-title q-link"></a>
           <div class="q-meta">
             <span class="q-cat"></span>
@@ -1524,13 +1629,16 @@
           </div>
         </div>
         <div class="q-actions">
-          <div class="level-seg" role="group" aria-label="학습 수준">
-            <button type="button" data-level="new" aria-pressed="true">미학습</button>
-            <button type="button" data-level="review" aria-pressed="false">복습 필요</button>
-            <button type="button" data-level="done" aria-pressed="false">완벽 이해</button>
+          <div class="level-pick">
+            <button type="button" class="level-chip" data-action="level" aria-haspopup="menu" aria-expanded="false">미학습</button>
           </div>
-          <button type="button" class="btn btn-sm memo-btn" data-action="memo" aria-expanded="false">메모</button>
-          <button type="button" class="star-btn" data-action="star" aria-pressed="false" aria-label="별표">
+          <button type="button" class="row-btn memo-btn" data-action="memo" aria-expanded="false" aria-label="메모" title="메모">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+          </button>
+          <button type="button" class="row-btn star-btn" data-action="star" aria-pressed="false" aria-label="별표" title="별표">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
             </svg>
@@ -1540,6 +1648,22 @@
       <div class="q-memo-full memo-md" hidden></div>
     </li>
   </template>
+
+  <!-- 학습 수준 목록: 칩을 누르면 그 행으로 옮겨 붙여 연다 -->
+  <ul id="level-menu" class="level-menu" role="menu" aria-label="학습 수준" hidden>
+    <li class="level-option" role="menuitemradio" tabindex="-1" data-level="new" aria-checked="false">
+      <span class="dot"></span>미학습
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </li>
+    <li class="level-option" role="menuitemradio" tabindex="-1" data-level="review" aria-checked="false">
+      <span class="dot dot-review"></span>복습 필요
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </li>
+    <li class="level-option" role="menuitemradio" tabindex="-1" data-level="done" aria-checked="false">
+      <span class="dot dot-done"></span>완벽 이해
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </li>
+  </ul>
 
   <script type="module">
     import { SEARCH_SYNONYMS } from './search-synonyms.js';
@@ -1554,6 +1678,7 @@
     } from './memo-core.js';
 
     const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
+    const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
     // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
     const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
     const GITHUB_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>';
@@ -1577,6 +1702,8 @@
       progressDone: document.getElementById('progress-done'),
       progressReview: document.getElementById('progress-review'),
       progressText: document.getElementById('progress-text'),
+      progressPercent: document.getElementById('progress-percent'),
+      levelMenu: document.getElementById('level-menu'),
       search: document.getElementById('search'),
       category: document.getElementById('category'),
       categoryTrigger: document.getElementById('category-trigger'),
@@ -2188,6 +2315,101 @@
       });
     }
 
+    // ---------- 학습 수준 목록 ----------
+    // 목록은 하나만 두고, 연 행의 칩 옆(.level-pick)으로 옮겨 붙인다. 칩 기준으로 배치돼 스크롤해도 칩과 함께 움직인다
+
+    function levelChipOf() {
+      return els.levelMenu.closest('.level-pick')?.querySelector('.level-chip') || null;
+    }
+
+    function placeLevelMenu() {
+      const chip = levelChipOf();
+      if (!chip) return;
+      const GAP = 4;
+      const EDGE = 12;
+      const NAV_HEIGHT = 52;
+      const rect = chip.getBoundingClientRect();
+      const below = innerHeight - rect.bottom - GAP - EDGE;
+      const above = rect.top - NAV_HEIGHT - GAP - EDGE;
+      els.levelMenu.classList.toggle('open-up', els.levelMenu.offsetHeight > below && above > below);
+    }
+
+    function openLevelMenu(row, focusLast = false) {
+      closeLevelMenu();
+      const { levelMenu: menu } = els;
+      const level = store.level(row.dataset.id);
+      for (const item of menu.children) item.setAttribute('aria-checked', String(item.dataset.level === level));
+
+      const chip = row.querySelector('.level-chip');
+      chip.after(menu);
+      menu.hidden = false;
+      chip.setAttribute('aria-expanded', 'true');
+      placeLevelMenu();
+
+      const items = [...menu.children];
+      (focusLast ? items.at(-1) : items.find((item) => item.getAttribute('aria-checked') === 'true') || items[0]).focus();
+    }
+
+    function closeLevelMenu(returnFocus = false) {
+      if (els.levelMenu.hidden) return;
+      els.levelMenu.hidden = true;
+      const chip = levelChipOf();
+      chip?.setAttribute('aria-expanded', 'false');
+      if (returnFocus) chip?.focus();
+    }
+
+    function chooseLevel(item) {
+      const row = item.closest('.q-row');
+      closeLevelMenu(true);
+      setLevel(row.dataset.id, item.dataset.level);
+    }
+
+    function bindLevelMenu() {
+      const { levelMenu: menu } = els;
+
+      // 칩에서 위·아래 화살표로도 연다
+      els.list.addEventListener('keydown', (e) => {
+        if (!e.target.matches('.level-chip') || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+        e.preventDefault();
+        openLevelMenu(e.target.closest('.q-row'), e.key === 'ArrowUp');
+      });
+
+      menu.addEventListener('keydown', (e) => {
+        const items = [...menu.children];
+        const index = items.indexOf(document.activeElement);
+        const moves = {
+          ArrowDown: items[Math.min(index + 1, items.length - 1)],
+          ArrowUp: items[Math.max(index - 1, 0)],
+          Home: items[0],
+          End: items.at(-1),
+        };
+        if (moves[e.key]) {
+          e.preventDefault();
+          moves[e.key].focus();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (items[index]) chooseLevel(items[index]);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeLevelMenu(true);
+        } else if (e.key === 'Tab') {
+          closeLevelMenu();
+        }
+      });
+
+      // 바깥을 누르거나 포커스가 목록 밖으로 나가면 닫는다
+      document.addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('.level-pick')) closeLevelMenu();
+      });
+      menu.addEventListener('focusout', (e) => {
+        if (e.relatedTarget && !e.relatedTarget.closest('.level-pick')) closeLevelMenu();
+      });
+
+      addEventListener('resize', () => {
+        if (!menu.hidden) placeLevelMenu();
+      });
+    }
+
     function createRow(q) {
       const row = els.rowTemplate.content.firstElementChild.cloneNode(true);
       row.dataset.id = q.id;
@@ -2275,6 +2497,7 @@
     }
 
     function renderAll() {
+      closeLevelMenu(); // 목록을 다시 그리면 열려 있던 행이 사라진다
       memoObserver.disconnect();
       rows.clear();
       const fragment = document.createDocumentFragment();
@@ -2307,9 +2530,9 @@
       const level = item.level || 'new';
 
       row.dataset.state = level;
-      for (const button of row.querySelectorAll('.level-seg button')) {
-        button.setAttribute('aria-pressed', String(button.dataset.level === level));
-      }
+      const chip = row.querySelector('.level-chip');
+      chip.textContent = LEVEL_LABELS[level];
+      chip.setAttribute('aria-label', `학습 수준: ${LEVEL_LABELS[level]}`);
 
       const star = row.querySelector('.star-btn');
       star.setAttribute('aria-pressed', String(Boolean(item.starred)));
@@ -2356,7 +2579,8 @@
       const percent = (n) => (counts.all ? (n / counts.all) * 100 : 0);
       els.progressDone.style.width = `${percent(counts.done)}%`;
       els.progressReview.style.width = `${percent(counts.review)}%`;
-      els.progressText.textContent = `${counts.all}개 중 ${counts.done}개 완벽 이해 (${Math.round(percent(counts.done))}%)`;
+      els.progressPercent.textContent = `${Math.round(percent(counts.done))}%`;
+      els.progressText.textContent = `${counts.all}개 중 ${counts.done}개 완벽 이해`;
       els.starCount.textContent = data.questions.filter((q) => store.item(q.id).starred).length;
     }
 
@@ -2627,14 +2851,18 @@
         const row = e.target.closest('.q-row');
         if (!row || !row.dataset.id) return;
 
-        const levelButton = e.target.closest('.level-seg button');
-        if (levelButton) {
-          setLevel(row.dataset.id, levelButton.dataset.level);
+        const levelOption = e.target.closest('.level-option');
+        if (levelOption) {
+          chooseLevel(levelOption);
           return;
         }
 
         const action = e.target.closest('[data-action]')?.dataset.action;
-        if (action === 'star') toggleStar(row.dataset.id);
+        if (action === 'level') {
+          // 같은 칩을 다시 누르면 닫고, 다른 행의 칩을 누르면 그 행으로 옮겨 연다
+          if (!els.levelMenu.hidden && levelChipOf() === e.target.closest('.level-chip')) closeLevelMenu();
+          else openLevelMenu(row);
+        } else if (action === 'star') toggleStar(row.dataset.id);
         else if (action === 'memo-toggle') setMemoExpanded(row, !row.classList.contains('memo-expanded'));
         else handleMemoAction(row, action);
       });
@@ -2684,6 +2912,7 @@
         applyFilter();
       });
       bindCategoryMenu();
+      bindLevelMenu();
 
       els.starFilter.addEventListener('click', () => {
         filter.starred = !filter.starred;

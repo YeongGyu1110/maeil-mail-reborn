@@ -498,11 +498,11 @@
     .token.function, .token.class-name { color: var(--syntax-function); }
     .token.variable { color: var(--syntax-variable); }
 
-    /* 내 메모: 답을 읽으면서 바로 쓰는 칸. 왼쪽 세로줄은 질문 목록의 '오늘 받은 질문'과 같은 표시다 (편집기 모양은 memo.css) */
+    /* 내 메모: 답을 읽으면서 바로 쓰는 칸. 본문 뒤에 구분선으로 나눈 문서의 마지막 절로 둔다 (편집기 모양은 memo.css) */
     .memo-section {
-      margin-top: 48px;
-      padding: 2px 0 2px 16px;
-      border-left: 2px solid var(--primary);
+      margin-top: 56px;
+      padding-top: 32px;
+      border-top: 1px solid var(--rule);
     }
 
     .memo-section[hidden] { display: none; }
@@ -512,15 +512,16 @@
       flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
-      gap: 2px 12px;
-      margin-bottom: 10px;
+      gap: 2px 16px;
+      margin-bottom: 14px;
     }
 
     .memo-section-title {
       margin: 0;
-      font-size: 12.5px;
-      font-weight: 600;
-      color: var(--primary);
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.5;
+      color: var(--text-main);
     }
 
     .memo-section-status {
@@ -546,7 +547,7 @@
       color: var(--text-muted);
     }
 
-    .memo-section + .doc-pagination { margin-top: 40px; }
+    .memo-section + .doc-pagination { margin-top: 48px; }
 
     /* 문서 꼬리: 이전 / 다음 질문 */
     .doc-pagination {

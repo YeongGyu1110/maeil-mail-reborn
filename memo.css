@@ -1,71 +1,97 @@
 /* 메모 편집기와 메모 마크다운: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
    색은 각 화면의 :root 변수(--primary, --rule, --code-*, --syntax-* 등)를, 버튼은 각 화면의 .btn을 쓴다. */
 
+/* 편집기 한 장: 머리(작성/미리보기, 글자 수) · 본문 · 꼬리(저장 정보, 버튼)를 테두리 하나 안에 묶어
+   종이 위에 놓인 메모지 한 장처럼 보이게 한다. 쓰는 중에는 테두리만 강조색으로 바뀐다 */
+.memo-editor {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--bg-paper);
+  transition: border-color 0.15s;
+}
+
+.memo-editor:has(textarea:focus) { border-color: var(--primary); }
+
 /* 작성 ↔ 미리보기 전환은 hidden 속성으로 한다. 아래에서 display를 정한 칸도 숨도록 우선한다 */
 .memo-editor [hidden] { display: none !important; }
 
-.memo-editor textarea {
-  display: block;
-  width: 100%;
-  min-height: 120px;
-  padding: 12px 14px;
-  border: none;
-  border-radius: 2px;
-  background: var(--bg-subtle);
-  color: var(--text-main);
-  font-family: inherit;
-  font-size: 14.5px;
-  line-height: 1.7;
-  resize: vertical;
-}
-
-.memo-editor textarea:focus {
-  outline: 1.5px solid var(--primary);
-  outline-offset: -1.5px;
-}
-
-.memo-editor textarea::placeholder { color: var(--text-muted); }
-
-/* 작성 / 미리보기 전환 */
+/* 머리: 밑줄로 고른 쪽을 표시하는 탭 */
 .memo-tabs {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-bottom: 6px;
+  align-items: stretch;
+  height: 38px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--rule);
 }
 
 .memo-tab {
-  height: 26px;
+  position: relative;
   padding: 0 10px;
   border: none;
-  border-radius: 2px;
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
 
 .memo-tab:hover,
-.memo-tab[aria-pressed="true"] {
-  background: var(--bg-subtle);
-  color: var(--text-main);
+.memo-tab[aria-pressed="true"] { color: var(--text-main); }
+
+.memo-tab[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--text-main);
 }
 
-.memo-tabs-hint {
+.memo-tab:focus-visible { outline-offset: -4px; }
+
+.memo-tabs-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   margin-left: auto;
+  padding: 0 10px;
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
-/* 미리보기: 질문 화면처럼 종이 위에 그린 문서로 보이도록 면 대신 얇은 테두리만 둔다 */
+.memo-tabs-meta > * + *::before {
+  content: "·";
+  margin-right: 8px;
+}
+
+/* 본문: 칸을 따로 칠하지 않고 종이에 바로 쓰는 것처럼 둔다. 미리보기와 여백을 같게 해 전환해도 글이 움직이지 않는다 */
+.memo-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.75;
+  resize: vertical;
+}
+
+.memo-editor textarea:focus { outline: none; }
+
+.memo-editor textarea::placeholder { color: var(--text-muted); }
+
 .memo-preview {
-  min-height: 120px;
-  padding: 12px 14px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
+  min-height: 140px;
+  padding: 14px 16px;
 }
 
 .memo-preview-note {
@@ -199,22 +225,29 @@
 .memo-md .token.function, .memo-md .token.class-name { color: var(--syntax-function); }
 .memo-md .token.variable { color: var(--syntax-variable); }
 
+/* 꼬리: 왼쪽은 저장 정보, 오른쪽은 버튼 */
 .memo-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
+  min-height: 44px;
+  padding: 8px 8px 8px 16px;
+  border-top: 1px solid var(--rule);
   font-size: 12px;
+  line-height: 1.55;
   color: var(--text-muted);
 }
 
 .memo-info {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px 10px;
+  flex-direction: column;
   min-width: 0;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
+
+.memo-info > :empty { display: none; }
 
 .memo-count { font-variant-numeric: tabular-nums; }
 .memo-github.is-error { color: var(--danger); }
@@ -223,4 +256,11 @@
   display: flex;
   flex-shrink: 0;
   gap: 4px;
+  margin-left: auto;
+}
+
+/* 좁은 화면에서는 머리의 안내 문구를 빼고 글자 수만 남긴다 */
+@media (max-width: 480px) {
+  .memo-tabs-hint { display: none; }
+  .memo-tabs-meta > * + *::before { content: none; }
 }
