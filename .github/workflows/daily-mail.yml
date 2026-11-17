@@ -3,8 +3,16 @@ name: Daily Interview Mail
 on:
   schedule:
     # 매일 UTC 20:07 (한국 시간 다음 날 오전 05:07)
+    # 요일은 여기서 거르지 않고 아래 MAIL_DAYS로 정한다. 쉬는 날에도 돌아야 빠진 날을 메울 수 있다.
     - cron: '7 20 * * *'
-  workflow_dispatch: # Actions 탭에서 수동 실행 버튼 활성화
+  # Actions 탭에서 수동 실행 버튼 활성화. 수동 실행은 테스트 발송이라
+  # 제목에 [테스트]를 붙여 메일만 보내고 progress.json은 바꾸지 않는다.
+  workflow_dispatch:
+
+# 두 실행이 겹치면 같은 질문을 두 번 보낼 수 있으므로 하나씩 차례로 돈다
+concurrency:
+  group: daily-mail
+  cancel-in-progress: false
 
 jobs:
   send:
@@ -15,6 +23,12 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # 실행이 예약된 시점이 아니라 지금의 최신 progress.json으로 판단하도록 기본 브랜치 끝을 받는다.
+          # 브랜치 이름을 주면 그 순간의 끝을, 비우면 이벤트에 고정된 커밋을 받는다. Re-run도 원래 커밋을 다시 쓰므로
+          # 비워 두면 이미 보낸 메일을 또 보낸다. 정기 실행 이벤트에는 저장소 정보가 없어 default_branch가 비므로
+          # ref_name으로 대신한다 (정기 실행은 항상 기본 브랜치에서 돈다).
+          ref: ${{ github.event.repository.default_branch || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,12 +41,24 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
           PAGES_URL: ${{ vars.PAGES_URL }} # Variables에서 등록
+          # 메일을 받을 요일 (한국 시간): mon,tue,wed,thu,fri,sat,sun 중에서 쉼표로. 비우면 매일
+          # 앱 알림도 이 요일을 따른다 (progress.json의 next에 이 요일만 들어간다).
+          # 바꿔도 next에 이미 정해 둔 날짜(최대 3번)는 예전 설정대로 보내고, 그 밖의 날짜부터 새 설정을 따른다
+          MAIL_DAYS: mon,tue,wed,thu,fri
         run: python send_mail.py
 
       - name: Update progress.json
+        # 메일 여러 통 중 일부만 보내고 실패해도, 보낸 것까지는 기록해 다음 날 다시 보내지 않도록 항상 실행한다
+        if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 첫 실행에서 progress.txt를 progress.json으로 옮기며 지우므로, 삭제까지 함께 스테이징한다
-          git add -A -- 'progress.*'
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: advance question index" && git push)
+          git add progress.json
+          if git diff --staged --quiet; then
+            echo "progress.json 변경 없음"
+            exit 0
+          fi
+          git commit -m "chore: advance question index"
+          # 실행하는 사이 다른 커밋(질문 추가 등)이 올라왔어도 push가 실패하지 않도록 그 위에 얹는다
+          git pull --rebase
+          git push
