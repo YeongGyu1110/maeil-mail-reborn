@@ -1,0 +1,782 @@
+// 메모 저장·편집 공용 코드: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
+// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 마크다운 미리보기, 메모 편집기를 담는다.
+// 두 화면이 같은 저장 코드와 같은 브라우저 저장소 키를 쓰므로, 한 화면에서 저장한 기록을 다른 화면이 그대로 이어 읽는다.
+import { firebaseConfig } from './firebase-config.js';
+
+const FIREBASE_VERSION = '10.14.1';
+export const MEMO_MAX = 3000;
+// 메모는 기본 문서와 따로 묶음 문서 4개(users/{uid}/memos/0~3)에 나눠 담는다. 개수를 바꾸면 firestore.rules도 같이 바꾼다
+const MEMO_SHARDS = 4;
+const MEMO_FIELDS = ['memo', 'memoAt'];
+const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
+const RETRY_MAX = 10 * 60 * 1000;
+const CACHE_TTL = 10 * 60 * 1000; // 화면을 오갈 때마다 Firestore를 다시 읽지 않도록 탭 단위 캐시
+export const STALE_AFTER = 5 * 60 * 1000; // 이만큼 자리를 비웠다 돌아오면 다른 기기의 변경을 보려고 다시 읽는다
+// 새로고침은 최신 상태를 보려는 것이므로 세션 캐시를 건너뛴다
+const PAGE_RELOADED = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+const LOCAL_KEY = 'maeil-study-v1';
+
+// 로그인 상태. mode: unconfigured | unavailable | guest | user | error | denied
+export const account = { user: null, mode: 'unconfigured' };
+
+// 화면마다 다르게 보여줄 것: 알림, 저장 상태 표시, 실패했던 저장을 다시 보내는 데 성공했을 때 할 일
+export const hooks = {
+  toast() {},
+  renderSaveState() {},
+  afterRetry() {},
+};
+
+// ---------- 브라우저 저장소 (사생활 보호 모드 등에서 실패해도 동작하도록) ----------
+
+export function readStore(type, key) {
+  try { return JSON.parse(window[type].getItem(key)); } catch { return null; }
+}
+
+// 저장 공간이 부족하거나 저장소를 쓸 수 없으면 false를 돌려준다
+export function writeStore(type, key, value) {
+  try {
+    window[type].setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeStore(type, key) {
+  try { window[type].removeItem(key); } catch { /* 저장소를 쓸 수 없는 환경 */ }
+}
+
+// ---------- 학습 기록 저장 ----------
+// items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000 } }
+// memoRepo: { id, fullName: "owner/name" } (GitHub 로그인 사용자만)
+// 미학습은 level이 없고, 별표가 없으면 starred가 없다. patch의 null은 해당 필드를 지운다는 뜻이다.
+// 화면에서는 메모까지 한 items로 다루고, Firestore에 쓸 때만 메모를 묶음 문서로 나눈다 (createFirestoreBackend).
+// 백엔드의 changeKey는 기록을 쓸 때마다 바뀌는 브라우저 저장소 키다. 다른 탭이 이 키의 storage 이벤트로 변경을 알아챈다 (watchOtherTabs).
+
+// 브라우저 저장소에 쓰지 못했을 때 (게스트 기록 저장)
+const storageFullError = () => Object.assign(new Error('브라우저 저장 공간이 부족해요'), { code: 'storage-full' });
+
+function applyPatch(items, patch) {
+  for (const [id, fields] of Object.entries(patch)) {
+    const item = { ...items[id] };
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === null) delete item[key];
+      else item[key] = value;
+    }
+    if (Object.keys(item).length) items[id] = item;
+    else delete items[id];
+  }
+}
+
+export const localBackend = {
+  changeKey: LOCAL_KEY,
+  async load() {
+    return { items: readStore('localStorage', LOCAL_KEY) || {}, memoRepo: null };
+  },
+  async write(patch) {
+    const items = readStore('localStorage', LOCAL_KEY) || {};
+    applyPatch(items, patch);
+    if (!writeStore('localStorage', LOCAL_KEY, items)) throw storageFullError();
+  },
+  clear() {
+    removeStore('localStorage', LOCAL_KEY);
+  },
+};
+
+// 메모가 들어갈 묶음 문서: 질문 번호를 묶음 수로 나눈 나머지 (fe-17 → 17 % 4 → memos/1)
+function memoShard(id) {
+  return String(Number(id.match(/\d+$/)?.[0] ?? 0) % MEMO_SHARDS);
+}
+
+const isMemoField = (key) => MEMO_FIELDS.includes(key);
+
+// Firestore: 학습 수준·별표는 기본 문서(users/{uid}), 메모는 묶음 문서(users/{uid}/memos/0~3)에 둔다.
+// 문서 하나의 최대 크기(1 MiB)를 메모가 다 쓰지 않도록 나눈 것이다.
+// → 접속 시 읽기는 기본 문서 1회 + 메모 묶음 조회(있는 묶음 수만큼, 최대 4회). 변경은 필드 단위 merge 쓰기를 한 번에(batch) 보낸다
+export function createFirestoreBackend(uid) {
+  const ref = fb.fs.doc(fb.db, 'users', uid);
+  const memosRef = fb.fs.collection(ref, 'memos');
+  const memoRef = (shard) => fb.fs.doc(memosRef, shard);
+  const cacheKey = `maeil-cache-${uid}`;
+  const snapshotKey = `maeil-snapshot-${uid}`; // 불러오기에 실패했을 때 보여줄 마지막 기록
+  const pendingKey = `maeil-pending-${uid}`; // 아직 쓰지 못한 변경 (새로고침해도 남아 다음 접속 때 보낸다)
+  const changeKey = `maeil-changed-${uid}`; // 마지막으로 기록을 쓴 시각 (다른 탭에 알리는 용도)
+  // 묶음으로 옮기지 못하고 기본 문서에 남아 있는 예전 메모의 질문 ID (그 메모를 바꿀 때 기본 문서에서도 지운다)
+  const legacy = new Set();
+  const remember = (snapshot) => {
+    // 저장 공간이 부족해 새 사본을 쓰지 못하면, 오래된 사본이 최신 기록처럼 보이지 않게 지운다
+    if (!writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot })) removeStore('sessionStorage', cacheKey);
+    if (!writeStore('localStorage', snapshotKey, snapshot)) removeStore('localStorage', snapshotKey);
+  };
+  const announce = () => writeStore('localStorage', changeKey, Date.now());
+
+  // 묶음 문서를 쓰기 전에는 메모가 기본 문서의 items에 있었다. 불러올 때 남아 있으면 묶음으로 옮긴다.
+  // memos에는 질문마다 이긴 쪽(더 나중에 저장한 메모)이 들어 있어, 기본 문서 쪽이 이긴 메모만 묶음에 쓴다.
+  async function moveLegacyMemos(legacyMemos, memos) {
+    const batch = fb.fs.writeBatch(fb.db);
+    const shards = {};
+    const cleared = {};
+    for (const [id, memo] of Object.entries(legacyMemos)) {
+      cleared[id] = { memo: fb.fs.deleteField(), memoAt: fb.fs.deleteField() };
+      if (memos[id] === memo) (shards[memoShard(id)] ??= {})[id] = memo;
+    }
+    for (const [shard, fields] of Object.entries(shards)) batch.set(memoRef(shard), fields, { merge: true });
+    batch.set(ref, { items: cleared }, { merge: true });
+    await batch.commit();
+    for (const id of Object.keys(legacyMemos)) legacy.delete(id);
+  }
+
+  return {
+    changeKey,
+    async load({ fresh = false } = {}) {
+      const cached = readStore('sessionStorage', cacheKey);
+      if (!fresh && !PAGE_RELOADED && cached && Date.now() - cached.at < CACHE_TTL) {
+        return { items: cached.items, memoRepo: cached.memoRepo || null };
+      }
+
+      const [snap, memoDocs] = await Promise.all([fb.fs.getDoc(ref), fb.fs.getDocs(memosRef)]);
+      const doc = snap.exists() ? snap.data() : {};
+
+      const memos = {};
+      for (const memoDoc of memoDocs.docs) {
+        for (const [id, memo] of Object.entries(memoDoc.data())) {
+          if (memo && Object.keys(memo).length) memos[id] = memo;
+        }
+      }
+
+      const items = {};
+      const legacyMemos = {};
+      for (const [id, item] of Object.entries(doc.items || {})) {
+        const rest = {};
+        const memo = {};
+        for (const [key, value] of Object.entries(item)) (isMemoField(key) ? memo : rest)[key] = value;
+        if (Object.keys(rest).length) items[id] = rest;
+        if (!Object.keys(memo).length) continue;
+        legacyMemos[id] = memo;
+        legacy.add(id);
+        if (!memos[id] || (memo.memoAt || 0) > (memos[id].memoAt || 0)) memos[id] = memo;
+      }
+      for (const [id, memo] of Object.entries(memos)) items[id] = { ...items[id], ...memo };
+
+      // 옮기지 못해도 기록은 그대로 보여주고, 다음에 불러올 때 다시 옮긴다
+      if (Object.keys(legacyMemos).length) {
+        await moveLegacyMemos(legacyMemos, memos).catch((err) => console.error(err));
+      }
+
+      const loaded = { items, memoRepo: doc.memoRepo || null };
+      remember(loaded);
+      return loaded;
+    },
+    async write(patch, snapshot) {
+      const main = {};
+      const shards = {};
+      const memoIds = [];
+      for (const [id, fields] of Object.entries(patch)) {
+        for (const [key, value] of Object.entries(fields)) {
+          const target = isMemoField(key) ? (shards[memoShard(id)] ??= {}) : main;
+          (target[id] ??= {})[key] = value === null ? fb.fs.deleteField() : value;
+        }
+        if (!Object.keys(fields).some(isMemoField)) continue;
+        memoIds.push(id);
+        // 메모를 지우면 묶음에서 질문 항목째 지운다 (빈 항목이 남지 않게)
+        if (MEMO_FIELDS.every((key) => fields[key] === null)) shards[memoShard(id)][id] = fb.fs.deleteField();
+        // 기본 문서에 남은 예전 메모가 다음에 불러올 때 되살아나지 않게 같이 지운다
+        if (legacy.has(id)) main[id] = { ...main[id], memo: fb.fs.deleteField(), memoAt: fb.fs.deleteField() };
+      }
+
+      const batch = fb.fs.writeBatch(fb.db);
+      if (Object.keys(main).length) batch.set(ref, { items: main }, { merge: true });
+      for (const [shard, memos] of Object.entries(shards)) batch.set(memoRef(shard), memos, { merge: true });
+      await batch.commit();
+      for (const id of memoIds) legacy.delete(id);
+      remember(snapshot);
+      announce();
+    },
+    async saveMemoRepo(repo, snapshot) {
+      await fb.fs.setDoc(ref, { memoRepo: repo }, { mergeFields: ['memoRepo'] });
+      remember(snapshot);
+      announce();
+    },
+    loadSnapshot() {
+      return readStore('localStorage', snapshotKey) || { items: {}, memoRepo: null };
+    },
+    loadPending() {
+      return readStore('localStorage', pendingKey) || {};
+    },
+    // 이 기기에 보관하지 못하면(저장 공간 부족 등) false
+    savePending(pending) {
+      if (Object.keys(pending).length) return writeStore('localStorage', pendingKey, pending);
+      removeStore('localStorage', pendingKey);
+      return true;
+    },
+    // 다른 탭이 기록을 바꿨을 때: 이 탭에서 화면을 옮겨도 낡은 사본을 읽지 않게 캐시를 버린다
+    dropCache() {
+      removeStore('sessionStorage', cacheKey);
+    },
+    // 로그아웃할 때 기록 사본을 지운다. 쓰지 못한 변경(pending)은 다음 로그인 때 보내려고 남긴다.
+    forget() {
+      removeStore('sessionStorage', cacheKey);
+      removeStore('localStorage', snapshotKey);
+    },
+  };
+}
+
+export const store = {
+  backend: localBackend,
+  items: {},
+  memoRepo: null,
+  pending: {},
+  pendingKept: true, // 쓰지 못한 변경을 이 기기에 보관했는지 (저장 공간이 부족하면 페이지를 닫는 순간 사라진다)
+  saving: null,
+  timer: 0,
+  loadedAt: 0,
+
+  item(id) {
+    return this.items[id] || {};
+  },
+
+  level(id) {
+    return this.item(id).level || 'new';
+  },
+
+  async use(backend) {
+    clearTimeout(this.timer);
+    this.backend = backend;
+    this.setLoaded(await backend.load());
+  },
+
+  // 불러오기에 실패했을 때: 마지막으로 확인한 기록을 보여주고, 변경은 모아 두었다가 나중에 쓴다
+  useOffline(backend) {
+    clearTimeout(this.timer);
+    this.backend = backend;
+    this.setLoaded(backend.loadSnapshot());
+    this.loadedAt = 0; // 탭으로 돌아오면 바로 다시 불러온다
+  },
+
+  // 저장 중인 쓰기가 없을 때만 부른다. fresh가 아니면 탭 단위 캐시가 있을 때 그것을 읽는다
+  async refresh({ fresh = true } = {}) {
+    this.setLoaded(await this.backend.load({ fresh }));
+  },
+
+  // 아직 쓰지 못한 변경은 이 기기에서 더 나중에 바꾼 것이므로 불러온 기록 위에 덮는다
+  setLoaded({ items, memoRepo }) {
+    this.pending = this.backend.loadPending?.() || {};
+    this.pendingKept = true; // 이 기기에서 읽어 온 대기열이다
+    applyPatch(items, this.pending);
+    this.items = items;
+    this.memoRepo = memoRepo;
+    this.loadedAt = Date.now();
+  },
+
+  async setMemoRepo(repo) {
+    await this.backend.saveMemoRepo(repo, { items: this.items, memoRepo: repo });
+    this.memoRepo = repo;
+  },
+
+  update(id, fields) {
+    applyPatch(this.items, { [id]: fields });
+    this.pending[id] = { ...this.pending[id], ...fields };
+    this.keepPending();
+  },
+
+  keepPending() {
+    this.pendingKept = this.backend.savePending?.(this.pending) !== false;
+  },
+
+  async flush() {
+    clearTimeout(this.timer);
+    while (this.saving) await this.saving;
+
+    const patch = this.pending;
+    if (!Object.keys(patch).length) return;
+    this.pending = {};
+
+    const writing = this.backend.write(patch, { items: this.items, memoRepo: this.memoRepo });
+    this.saving = writing.catch(() => {}).finally(() => { this.saving = null; });
+    try {
+      await writing;
+    } catch (err) {
+      // 실패한 변경은 대기열로 되돌린다. 그사이 생긴 더 새로운 변경이 우선한다.
+      for (const [id, fields] of Object.entries(patch)) {
+        this.pending[id] = { ...fields, ...this.pending[id] };
+      }
+      throw err;
+    } finally {
+      this.keepPending();
+    }
+  },
+
+  get busy() {
+    return this.saving !== null || Object.keys(this.pending).length > 0;
+  },
+
+  // 다시 불러와도 되는지: 쓰는 중이 아니고, 이 브라우저에만 저장할 때는 대기열도 없어야 한다
+  // (이 브라우저 저장은 대기열을 따로 보관하지 않아, 다시 불러오면 쓰지 못한 변경이 사라진다)
+  get canReload() {
+    return !this.saving && !(this.backend === localBackend && this.busy);
+  },
+};
+
+// 다른 탭에서 기록을 쓰면 이 탭의 기록이 낡았다고 표시한다 (storage 이벤트는 쓴 탭이 아닌 다른 탭에만 온다).
+// 기록을 바로 바꾸지 않고, 각 화면이 다음에 탭으로 돌아올 때 다시 불러오게 한다 (onStale). 고치던 메모를 덮지 않기 위해서다.
+export function watchOtherTabs(onStale) {
+  addEventListener('storage', (e) => {
+    if (!e.key || e.key !== store.backend.changeKey) return;
+    store.loadedAt = 0;
+    store.backend.dropCache?.();
+    onStale();
+  });
+}
+
+// ---------- 저장 실패 처리 ----------
+
+export let saveErrorShown = false;
+let retryDelay = RETRY_BASE;
+
+export const SAVE_STATE_TEXT = {
+  pending: '저장 중…',
+  saved: '저장됨',
+  failed: '저장 실패 · 이 기기에 보관하고 다시 시도하는 중',
+  unkept: '저장 실패 · 다시 시도하는 중 (저장 공간이 부족해 이 기기에 보관 못 함)',
+  held: '저장 거부됨 · 이 기기에 보관 중',
+  full: '저장 실패 · 브라우저 저장 공간 부족',
+};
+
+// 다시 보내도 소용없는 오류(규칙 거부, 문서 크기 초과 등)는 자동 재시도를 멈추고 다음 접속 때 다시 보낸다
+const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
+
+function saveErrorMessage(err) {
+  if (err?.code === 'storage-full') return '브라우저 저장 공간이 부족해 저장하지 못했어요. 로그인하면 계정에 저장할 수 있어요.';
+  if (!store.pendingKept) return '저장하지 못했고, 브라우저 저장 공간이 부족해 이 기기에도 보관하지 못했어요. 저장될 때까지 페이지를 닫지 말아주세요.';
+  if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
+  if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
+  return '저장하지 못했어요. 바꾼 내용은 이 기기에 보관했다가 연결되면 저장할게요.';
+}
+
+// 실패한 저장을 알리고, 일시적인 오류면 간격을 늘려 가며 다시 시도한다
+export function handleSaveError(err) {
+  console.error(err);
+  if (!saveErrorShown) hooks.toast(saveErrorMessage(err), 'error', 5000);
+  saveErrorShown = true;
+  // 게스트 기록을 브라우저에 쓰지 못함: 다시 시도해도 같으니 다음 변경 때 다시 쓴다
+  if (err?.code === 'storage-full') {
+    hooks.renderSaveState('full');
+    return;
+  }
+  if (isPermanentError(err)) {
+    hooks.renderSaveState('held');
+    return;
+  }
+  hooks.renderSaveState(store.pendingKept ? 'failed' : 'unkept');
+  clearTimeout(store.timer);
+  store.timer = setTimeout(flushInBackground, retryDelay);
+  retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
+}
+
+function resetSaveErrors() {
+  saveErrorShown = false;
+  retryDelay = RETRY_BASE;
+}
+
+export function flushInBackground() {
+  store.flush()
+    .then(() => {
+      resetSaveErrors();
+      hooks.renderSaveState(store.busy ? 'pending' : 'saved');
+      hooks.afterRetry();
+    })
+    .catch(handleSaveError);
+}
+
+// ---------- Firebase ----------
+
+export let fb = null;
+export const firebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+
+export async function loadFirebase() {
+  const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
+  const [app, auth, fs] = await Promise.all([
+    import(`${base}/firebase-app.js`),
+    import(`${base}/firebase-auth.js`),
+    import(`${base}/firebase-firestore-lite.js`),
+  ]);
+  const instance = app.initializeApp(firebaseConfig);
+  fb = { auth, fs, authInstance: auth.getAuth(instance), db: fs.getFirestore(instance) };
+  return fb;
+}
+
+// ---------- GitHub ----------
+
+export const githubTokenKey = (uid) => `maeil-github-token-${uid}`;
+
+// Firebase는 GitHub 토큰을 로그인하는 순간에만 넘겨주므로 이 기기에 보관해 둔다
+export function rememberGithubToken(result) {
+  const token = fb.auth.GithubAuthProvider.credentialFromResult(result)?.accessToken || null;
+  if (token) writeStore('localStorage', githubTokenKey(result.user.uid), token);
+  return token;
+}
+
+// 이미 승인한 계정이면 GitHub 동의 화면 없이 바로 돌아온다
+export async function connectGithub() {
+  const result = await fb.auth.reauthenticateWithPopup(fb.authInstance.currentUser, new fb.auth.GithubAuthProvider());
+  return rememberGithubToken(result);
+}
+
+function getGithubToken() {
+  const token = readStore('localStorage', githubTokenKey(account.user.uid));
+  return token ? Promise.resolve(token) : connectGithub();
+}
+
+export async function githubApi(token, path, { method = 'GET', body } = {}) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    method,
+    cache: 'no-store', // 커밋 직후 다시 읽을 때 오래된 sha를 받지 않도록
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(body && { 'Content-Type': 'application/json' }),
+    },
+    body: body && JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    removeStore('localStorage', githubTokenKey(account.user.uid));
+    throw Object.assign(new Error('GitHub 토큰이 만료됐어요.'), { code: 'github/unauthorized' });
+  }
+  if (!res.ok) {
+    const { message } = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(message || `GitHub API ${res.status}`), { status: res.status });
+  }
+  return res.json();
+}
+
+function toBase64(text) {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+// 메모를 선택한 저장소의 기본 브랜치에 {id}.md로 커밋한다. 커밋 작성자는 토큰 주인(사용자)이다.
+// 잔디는 기본 브랜치 커밋만 집계되므로 브랜치를 지정하지 않는다 (빈 저장소면 첫 커밋이 기본 브랜치를 만든다).
+async function commitMemo(token, id, text, title) {
+  const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
+
+  for (let attempt = 0; ; attempt++) {
+    let sha = null;
+    try {
+      ({ sha } = await githubApi(token, path));
+    } catch (err) {
+      if (err.status !== 404) throw err; // 새 파일이거나 빈 저장소
+    }
+
+    try {
+      await githubApi(token, path, {
+        method: 'PUT',
+        body: {
+          message: `${sha ? '메모 수정' : '메모 추가'}: ${id.toUpperCase()} ${title}`.trim(),
+          content: toBase64(`${text}\n`),
+          ...(sha && { sha }),
+        },
+      });
+      return;
+    } catch (err) {
+      // 다른 기기에서 그사이 커밋해 sha가 바뀌었으면 한 번 더 시도한다
+      if (err.status !== 409 || attempt > 0) throw err;
+    }
+  }
+}
+
+function githubErrorMessage(err) {
+  if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
+  if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
+  if (err.code === 'auth/popup-blocked') return '팝업이 차단됐어요. 다시 저장해주세요.';
+  if (err.status === 429 || /rate limit/i.test(err.message)) return 'GitHub 요청 한도에 걸렸어요. 잠시 후 다시 저장해주세요.';
+  if (err.status === 403 || err.status === 404) return '저장소에 접근할 수 없어요. 앱에 저장소가 추가돼 있는지 확인해주세요.';
+  return `(${err.message})`;
+}
+
+// GitHub 커밋은 Firestore와 별개라, 계정 기록을 못 불러온 상태(error)에서도 한다
+const canCommit = () => (account.mode === 'user' || account.mode === 'error') && Boolean(store.memoRepo);
+
+// ---------- 메모 마크다운 ----------
+// 질문 화면과 같은 파일·버전·integrity를 쓴다 (브라우저 캐시를 같이 쓰고, CDN 파일이 바뀌면 실행하지 않는다).
+// 질문 목록에서는 미리보기를 처음 열 때만 불러온다. 질문 화면은 본문을 그리려고 이미 불러와 두었으니 다시 받지 않는다.
+// jsx는 javascript 뒤, tsx는 jsx와 typescript 뒤에 와야 한다.
+const MARKDOWN_SCRIPTS = [
+  ['https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js', 'sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js', 'sha384-06z5D//U/xpvxZHuUz92xBvq3DqBBFi7Up53HRrbV7Jlv7Yvh/MZ7oenfUe9iCEt'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js', 'sha384-D44bgYYKvaiDh4cOGlj1dbSDpSctn2FSUj118HZGmZEShZcO2v//Q5vvhNy206pp'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js', 'sha384-PeOqKNW/piETaCg8rqKFy+Pm6KEk7e36/5YZE5XO/OaFdO+/Aw3O8qZ9qDPKVUgx'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js', 'sha384-nnKpKrv4RkNTjD3hNwkWsmHW8LBti5JWyAWAgeo8iC4QkFQn2Yn2Kj4mOTTNoI9V'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js', 'sha384-ZzE8Y/KUKzSD+AEsQQvM2PdJSEVs/T/6LE/nSetJ0ReWEE/ZgpKNBSUkTRI3Dc7E'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js', 'sha384-RhrmFFMb0ZCHImjFMpR/UE3VEtIVTCtNrtKQqXCzqXZNJala02N3UbVhi+qzw3CY'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js', 'sha384-9WmlN8ABpoFSSHvBGGjhvB3E/D8UkNB9HpLJjBQFC2VSQsM1odiQDv4NbEo+7l15'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-graphql.min.js', 'sha384-CfAKPApbQPXLiw2NZvvX89i+xd8VKHk+TfWhnWgmUXxl8Ct6qPN7u30+ATfxibjS'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js', 'sha384-/MKWdycCDliku23mP5sYXbZNuXrzgmQO/jsVxwPFn99dVOaXRyKsqDjarqpueGAp'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js', 'sha384-DioAMZB4yk91W6LuFit5wJDh8c5Ov09f/MBvja94y0PodMqTpTZeBeejqpRUru7D'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js', 'sha384-AKAiycghK0jDCjD+aavMHzDkLzRR7Yzcwh3+xL/295cvyVMe+cxQfyQC8xxGGcI8'],
+  ['https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sass.min.js', 'sha384-vtpsGXKlAgv7RZuBJVa1roUNFN9110ZNgbj9o6S42DEC9jn43k4IHYtkqaoOODTS'],
+];
+const loadedScripts = new Set();
+let markdownLoading = null;
+let memoMarked = null;
+
+// 이 함수로 받았거나, 페이지에 처음부터 있던 스크립트 (실패한 스크립트는 loadScript가 지운다)
+const hasScript = (src) => loadedScripts.has(src) || [...document.scripts].some((script) => script.src === src && !('memo' in script.dataset));
+
+function loadScript(src, integrity) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.integrity = integrity;
+    script.crossOrigin = 'anonymous';
+    script.async = false; // 받는 건 동시에, 실행은 넣은 순서대로
+    script.dataset.memo = '';
+    script.onload = () => {
+      loadedScripts.add(src);
+      resolve();
+    };
+    script.onerror = () => {
+      script.remove();
+      reject(new Error(`스크립트를 불러오지 못했어요: ${src}`));
+    };
+    document.head.append(script);
+  });
+}
+
+// 실패하면 다음에 부를 때 아직 못 받은 파일만 다시 받는다
+export function loadMarkdown() {
+  if (window.marked && MARKDOWN_SCRIPTS.every(([src]) => hasScript(src))) return Promise.resolve();
+  markdownLoading ??= (async () => {
+    // Prism이 불러오자마자 페이지의 모든 코드를 스스로 칠하지 않게 한다 (메모 안에서만 칠한다)
+    window.Prism ??= { manual: true };
+    const pending = MARKDOWN_SCRIPTS.filter(([src]) => !hasScript(src));
+    const results = await Promise.allSettled(pending.map(([src, integrity]) => loadScript(src, integrity)));
+    // 코드 색칠(Prism)이 일부 빠져도 마크다운 자체는 보여준다
+    if (!window.marked) throw results.find((r) => r.status === 'rejected')?.reason || new Error('marked를 불러오지 못했어요');
+  })().finally(() => {
+    markdownLoading = null;
+  });
+  return markdownLoading;
+}
+
+const escapeHtml = (text) => text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+
+// 링크·이미지 주소는 http(s)·mailto와 상대 주소만 남긴다 (javascript: 같은 주소로 코드가 실행되지 않게)
+function isSafeUrl(url) {
+  const scheme = url.replace(/[\u0000- \u007f]/g, '').match(/^([a-z][a-z0-9+.-]*):/i)?.[1].toLowerCase();
+  return !scheme || ['http', 'https', 'mailto'].includes(scheme);
+}
+
+function sanitizeMarkdown(root) {
+  for (const el of root.querySelectorAll('*')) {
+    for (const { name, value } of [...el.attributes]) {
+      if (name.startsWith('on') || ((name === 'href' || name === 'src') && !isSafeUrl(value))) el.removeAttribute(name);
+    }
+    // 링크를 누르면 새 탭으로 연다 (쓰던 메모가 있는 이 페이지를 떠나지 않게)
+    if (el.matches('a[href]')) {
+      el.target = '_blank';
+      el.rel = 'noopener noreferrer';
+    }
+  }
+}
+
+// GitHub에서 .md 파일을 보여주는 방식(GFM, 한 줄 바꿈은 이어 붙임)에 맞춰 그린다
+export function renderMarkdown(container, text) {
+  memoMarked ??= new window.marked.Marked({
+    gfm: true,
+    // 메모 안의 HTML 태그는 실행하지 않고 글자 그대로 보여준다
+    renderer: { html: ({ text: html }) => escapeHtml(html) },
+  });
+  const template = document.createElement('template');
+  template.innerHTML = memoMarked.parse(text);
+  sanitizeMarkdown(template.content);
+  container.replaceChildren(template.content);
+  window.Prism?.highlightAllUnder?.(container);
+}
+
+function previewNote(text) {
+  const note = document.createElement('p');
+  note.className = 'memo-preview-note';
+  note.textContent = text;
+  return note;
+}
+
+let previewRuns = 0;
+
+async function renderMemoPreview(editor) {
+  const preview = editor.querySelector('.memo-preview');
+  if (preview.hidden) return;
+  const text = editor.querySelector('textarea').value;
+  if (!text.trim()) {
+    preview.replaceChildren(previewNote('미리 볼 내용이 없어요.'));
+    return;
+  }
+
+  const run = String(++previewRuns);
+  preview.dataset.run = run;
+  if (!window.marked) preview.replaceChildren(previewNote('미리보기를 준비하는 중…'));
+  try {
+    await loadMarkdown();
+  } catch (err) {
+    console.error(err);
+    if (preview.dataset.run === run) preview.replaceChildren(previewNote('미리보기를 불러오지 못했어요. 연결을 확인하고 미리보기를 다시 눌러주세요.'));
+    return;
+  }
+  // 불러오는 사이 작성으로 돌아갔거나 더 나중에 그리기 시작했으면 그대로 둔다
+  if (preview.hidden || preview.dataset.run !== run) return;
+  try {
+    renderMarkdown(preview, text);
+  } catch (err) {
+    console.error(err);
+    preview.replaceChildren(previewNote('이 메모는 미리보기로 그리지 못했어요.'));
+  }
+}
+
+// ---------- 메모 편집기 ----------
+// 편집기 하나가 질문 하나(data-id)의 메모를 고친다. 놓을 자리와 열고 닫기는 각 화면이 정한다.
+// 버튼은 data-action(memo-write, memo-preview, memo-save, memo-close)만 달려 있고, 누를 때 할 일도 각 화면이 연결한다.
+
+export const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
+
+const EDITOR_HTML = `
+  <div class="memo-tabs" role="group" aria-label="메모 보기">
+    <button type="button" class="memo-tab" data-action="memo-write" aria-pressed="true">작성</button>
+    <button type="button" class="memo-tab" data-action="memo-preview" aria-pressed="false">미리보기</button>
+    <span class="memo-tabs-hint">마크다운 사용 가능</span>
+  </div>
+  <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
+  <div class="memo-preview memo-md" hidden></div>
+  <div class="memo-footer">
+    <div class="memo-info">
+      <span class="memo-count"></span>
+      <span class="memo-saved"></span>
+      <span class="memo-github"></span>
+    </div>
+    <div class="memo-buttons">
+      <button type="button" class="btn btn-sm" data-action="memo-close">닫기</button>
+      <button type="button" class="btn btn-sm btn-primary" data-action="memo-save">저장</button>
+    </div>
+  </div>`;
+
+// closable이 아니면 닫기 버튼을 두지 않는다 (늘 펼쳐 두는 편집기)
+export function createEditor(id, { closable = true } = {}) {
+  const editor = document.createElement('div');
+  editor.className = 'memo-editor';
+  editor.dataset.id = id;
+  editor.innerHTML = EDITOR_HTML;
+  if (!closable) editor.querySelector('[data-action="memo-close"]').remove();
+  const textarea = editor.querySelector('textarea');
+  textarea.maxLength = MEMO_MAX;
+  textarea.value = store.item(id).memo || '';
+  textarea.setAttribute('aria-label', `${id.toUpperCase()} 메모`);
+  return editor;
+}
+
+// 고친 내용이 있거나, 저장은 됐지만 GitHub 커밋이 실패해 다시 올려야 하는 상태
+export function isEditorDirty(editor) {
+  const id = editor.dataset.id;
+  const text = editor.querySelector('textarea').value.trim();
+  return text !== (store.item(id).memo || '') || (Boolean(text) && uncommitted.has(id));
+}
+
+// 미리보기 중(숨긴 칸)에는 높이를 잴 수 없으니 작성으로 돌아올 때 잰다
+export function autosize(textarea) {
+  if (textarea.hidden) return;
+  textarea.style.height = 'auto';
+  textarea.style.height = `${textarea.scrollHeight + 2}px`;
+}
+
+const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+export function updateEditor(editor) {
+  const id = editor.dataset.id;
+  const item = store.item(id);
+  editor.querySelector('.memo-count').textContent = `${editor.querySelector('textarea').value.length} / ${MEMO_MAX}`;
+  editor.querySelector('.memo-saved').textContent = item.memoAt
+    ? `마지막 저장 ${dateFormat.format(item.memoAt)}`
+    : '';
+
+  const github = editor.querySelector('.memo-github');
+  const failed = uncommitted.has(id);
+  github.classList.toggle('is-error', failed);
+  github.textContent = !canCommit() || !editor.querySelector('textarea').value.trim() ? ''
+    : failed ? 'GitHub에 아직 올리지 못했어요 · 다시 저장해주세요'
+    : `저장하면 ${store.memoRepo.fullName}의 ${id}.md로 커밋돼요`;
+
+  editor.querySelector('[data-action="memo-save"]').disabled = !isEditorDirty(editor);
+}
+
+export function setEditorMode(editor, mode) {
+  const textarea = editor.querySelector('textarea');
+  const preview = editor.querySelector('.memo-preview');
+  textarea.hidden = mode === 'preview';
+  preview.hidden = mode !== 'preview';
+  for (const tab of editor.querySelectorAll('.memo-tab')) {
+    tab.setAttribute('aria-pressed', String(tab.dataset.action === `memo-${mode}`));
+  }
+  if (mode === 'preview') {
+    renderMemoPreview(editor);
+  } else {
+    autosize(textarea);
+    textarea.focus();
+  }
+}
+
+// 다시 불러온 기록으로 편집기 내용을 바꾼다 (고치던 내용이 없을 때만 부른다)
+export function resetEditor(editor) {
+  const textarea = editor.querySelector('textarea');
+  textarea.value = store.item(editor.dataset.id).memo || '';
+  autosize(textarea);
+  updateEditor(editor);
+  renderMemoPreview(editor); // 미리보기 중이면 새 내용으로 다시 그린다
+}
+
+// title은 GitHub 커밋 메시지에 붙일 질문 제목, onChange는 기록이 바뀐 직후 화면을 고칠 때 부른다
+export async function saveMemo(editor, { title = '', onChange = () => {} } = {}) {
+  const id = editor.dataset.id;
+  const textarea = editor.querySelector('textarea');
+  const saveButton = editor.querySelector('[data-action="memo-save"]');
+  const text = textarea.value.trim();
+  const changed = text !== (store.item(id).memo || '');
+  // 메모를 지울 때는 GitHub 파일을 그대로 둔다 (학습 기록으로 남긴다)
+  const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
+
+  textarea.value = text;
+  saveButton.disabled = true;
+  saveButton.textContent = '저장 중…';
+  if (changed) {
+    store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
+    onChange(id);
+    hooks.renderSaveState('pending');
+  }
+
+  // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
+  const [saved, committed] = await Promise.allSettled([
+    changed ? store.flush() : Promise.resolve(),
+    shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text, title)) : Promise.resolve(),
+  ]);
+
+  if (shouldCommit) {
+    if (committed.status === 'fulfilled') uncommitted.delete(id);
+    else uncommitted.add(id);
+  }
+
+  if (changed && saved.status === 'fulfilled') hooks.renderSaveState(store.busy ? 'pending' : 'saved');
+
+  if (saved.status === 'rejected') {
+    saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
+    handleSaveError(saved.reason);
+  } else if (committed.status === 'rejected') {
+    console.error(committed.reason);
+    hooks.toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
+  } else {
+    resetSaveErrors();
+    hooks.toast(shouldCommit
+      ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
+      : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
+  }
+
+  saveButton.textContent = '저장';
+  updateEditor(editor);
+}

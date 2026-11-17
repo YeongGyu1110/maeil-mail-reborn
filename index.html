@@ -24,6 +24,7 @@
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 
   <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="stylesheet" href="memo.css">
 
   <style>
     :root {
@@ -52,6 +53,22 @@
 
       --skeleton-base: #eceef1;
       --skeleton-highlight: #dde1e5;
+
+      /* 메모 미리보기의 코드 블록 (질문 화면과 같은 색) */
+      --code-block-bg: #f3f5f7;
+      --code-block-text: #1e293b;
+      --code-inline-bg: #eef0f3;
+      --code-inline-color: #1e293b;
+
+      --syntax-comment: #64748b;
+      --syntax-punctuation: #475569;
+      --syntax-keyword: #c2410c;
+      --syntax-tag: #15803d;
+      --syntax-string: #0369a1;
+      --syntax-number: #0284c7;
+      --syntax-function: #7c3aed;
+      --syntax-operator: #c2410c;
+      --syntax-variable: #b45309;
     }
 
     /* [다크 모드] 무채색 흑연 캔버스 위의 짙은 종이 */
@@ -80,6 +97,21 @@
 
       --skeleton-base: #232326;
       --skeleton-highlight: #2e2e32;
+
+      --code-block-bg: #141416;
+      --code-block-text: #e2e8f0;
+      --code-inline-bg: #26262a;
+      --code-inline-color: #e2e8f0;
+
+      --syntax-comment: #828d9d;
+      --syntax-punctuation: #94a3b8;
+      --syntax-keyword: #fb923c;
+      --syntax-tag: #4ade80;
+      --syntax-string: #7dd3fc;
+      --syntax-number: #38bdf8;
+      --syntax-function: #c084fc;
+      --syntax-operator: #fb923c;
+      --syntax-variable: #fbbf24;
     }
 
     * { box-sizing: border-box; }
@@ -576,7 +608,9 @@
 
     .save-state:empty { display: none; }
     .save-state[data-state="saved"] { color: var(--primary); }
-    .save-state[data-state="failed"] { color: var(--danger); }
+    .save-state[data-state="failed"],
+    .save-state[data-state="unkept"],
+    .save-state[data-state="full"] { color: var(--danger); }
 
     /* 문서 지면: 테두리 대신 면 대비와 옅은 그림자로 종이를 구분 */
     .doc-container {
@@ -611,17 +645,34 @@
       color: var(--text-main);
     }
 
-    /* 오늘 받은 질문: 왼쪽 세로줄 하나로 표시하는 머리글 */
+    /* 오늘 받은 질문: 왼쪽 세로줄 하나로 표시하는 머리글. 메모를 열면 편집기가 세로줄 안쪽에 이어진다 */
     .today {
+      margin-bottom: 32px;
+      padding: 2px 0 2px 16px;
+      border-left: 2px solid var(--primary);
+    }
+
+    /* 링크 안에 버튼을 넣을 수 없어, 질문 링크와 메모 버튼을 나란히 둔다 */
+    .today-head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .today-link {
+      flex: 1;
+      min-width: 0;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      margin-bottom: 32px;
-      padding: 2px 0 2px 16px;
-      border-left: 2px solid var(--primary);
       text-decoration: none;
     }
+
+    .today-text { min-width: 0; }
+
+    .today .memo-btn { flex-shrink: 0; }
+    .today .memo-editor { margin-left: 0; }
 
     .today-label {
       font-size: 12.5px;
@@ -640,7 +691,7 @@
       text-underline-offset: 3px;
     }
 
-    .today:hover .today-title { text-decoration: underline; }
+    .today-link:hover .today-title { text-decoration: underline; }
 
     .today-go {
       flex-shrink: 0;
@@ -799,6 +850,40 @@
       color: var(--text-muted);
     }
 
+    /* 한 줄에 다 안 들어가는 메모만 펼칠 수 있다 (버튼은 줄 오른쪽 끝에 고정) */
+    .q-memo-toggle {
+      flex-shrink: 0;
+      margin-left: auto;
+      padding: 0 2px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font: inherit;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .q-memo-toggle:hover {
+      color: var(--text-main);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* 펼친 메모: 한 줄 미리보기 대신 메모 편집기와 같은 자리·폭에 마크다운으로 그려 전부 보여준다.
+       글자 모양은 편집기 미리보기와 같은 .memo-md를 쓴다 */
+    .q-row.memo-expanded .q-memo-preview { display: none; }
+
+    .q-memo-full {
+      margin: 8px 0 4px 80px;
+      padding: 12px 14px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      /* 마크다운 파서를 받기 전·받지 못했을 때는 원문을 줄바꿈 그대로 보여준다 */
+      white-space: pre-wrap;
+    }
+
+    .q-memo-full.is-rendered { white-space: normal; }
+
     .q-actions {
       display: flex;
       align-items: center;
@@ -892,57 +977,9 @@
 
     .star-btn[aria-pressed="true"] svg { fill: currentColor; }
 
-    /* 메모 편집기: 질문 제목 아래에 이어 쓰는 칸 */
+    /* 메모 편집기: 질문 제목 아래에 이어 쓰는 칸 (편집기 모양은 memo.css) */
     .memo-editor {
       margin: 12px 0 4px 80px;
-    }
-
-    .memo-editor textarea {
-      display: block;
-      width: 100%;
-      min-height: 120px;
-      padding: 12px 14px;
-      border: none;
-      border-radius: 2px;
-      background: var(--bg-subtle);
-      color: var(--text-main);
-      font-family: inherit;
-      font-size: 14.5px;
-      line-height: 1.7;
-      resize: vertical;
-    }
-
-    .memo-editor textarea:focus {
-      outline: 1.5px solid var(--primary);
-      outline-offset: -1.5px;
-    }
-
-    .memo-editor textarea::placeholder { color: var(--text-muted); }
-
-    .memo-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 8px;
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .memo-info {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 2px 10px;
-      min-width: 0;
-    }
-
-    .memo-count { font-variant-numeric: tabular-nums; }
-    .memo-github.is-error { color: var(--danger); }
-
-    .memo-buttons {
-      display: flex;
-      flex-shrink: 0;
-      gap: 4px;
     }
 
     .empty {
@@ -1282,7 +1319,8 @@
         grid-column: 1;
         flex-wrap: wrap;
       }
-      .memo-editor { margin-left: 0; }
+      .memo-editor,
+      .q-memo-full { margin-left: 0; }
     }
   </style>
 </head>
@@ -1404,13 +1442,18 @@
         <h1>질문 색인</h1>
       </header>
 
-      <a id="today" class="today q-link" hidden>
-        <div>
-          <div class="today-label">오늘 받은 질문 · <span id="today-num"></span></div>
-          <div id="today-title" class="today-title"></div>
+      <section id="today" class="today" aria-label="오늘 받은 질문" hidden>
+        <div class="today-head">
+          <a id="today-link" class="today-link q-link">
+            <div class="today-text">
+              <div class="today-label">오늘 받은 질문 · <span id="today-num"></span></div>
+              <div id="today-title" class="today-title"></div>
+            </div>
+            <span class="today-go">읽기 →</span>
+          </a>
+          <button type="button" class="btn btn-sm memo-btn" data-action="memo" aria-expanded="false">메모</button>
         </div>
-        <span class="today-go">읽기 →</span>
-      </a>
+      </section>
 
       <label class="search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1477,6 +1520,7 @@
           <div class="q-meta">
             <span class="q-cat"></span>
             <span class="q-memo-preview" hidden></span>
+            <button type="button" class="q-memo-toggle" data-action="memo-toggle" aria-expanded="false" hidden>펼치기</button>
           </div>
         </div>
         <div class="q-actions">
@@ -1493,40 +1537,23 @@
           </button>
         </div>
       </div>
+      <div class="q-memo-full memo-md" hidden></div>
     </li>
   </template>
 
-  <template id="editor-template">
-    <div class="memo-editor">
-      <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
-      <div class="memo-footer">
-        <div class="memo-info">
-          <span class="memo-count"></span>
-          <span class="memo-saved"></span>
-          <span class="memo-github"></span>
-        </div>
-        <div class="memo-buttons">
-          <button type="button" class="btn btn-sm" data-action="memo-close">닫기</button>
-          <button type="button" class="btn btn-sm btn-primary" data-action="memo-save">저장</button>
-        </div>
-      </div>
-    </div>
-  </template>
-
   <script type="module">
-    import { firebaseConfig } from './firebase-config.js';
     import { SEARCH_SYNONYMS } from './search-synonyms.js';
+    // 기록 저장, 저장 실패 재시도, GitHub 커밋, 메모 편집기는 질문 화면과 같이 쓴다
+    import {
+      account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
+      readStore, writeStore, removeStore, STALE_AFTER, SAVE_STATE_TEXT,
+      saveErrorShown, flushInBackground,
+      fb, firebaseConfigured, loadFirebase, githubTokenKey, rememberGithubToken, connectGithub, githubApi,
+      loadMarkdown, renderMarkdown,
+      createEditor, isEditorDirty, autosize, updateEditor, setEditorMode, resetEditor, saveMemo as saveMemoEditor,
+    } from './memo-core.js';
 
-    const FIREBASE_VERSION = '10.14.1';
-    const MEMO_MAX = 1000;
     const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
-    const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
-    const RETRY_MAX = 10 * 60 * 1000;
-    const CACHE_TTL = 10 * 60 * 1000; // 질문을 보고 돌아올 때 Firestore를 다시 읽지 않도록 세션 캐시
-    const STALE_AFTER = 5 * 60 * 1000; // 이만큼 자리를 비웠다 돌아오면 다른 기기의 변경을 보려고 다시 읽는다
-    // 새로고침은 최신 상태를 보려는 것이므로 세션 캐시를 건너뛴다
-    const PAGE_RELOADED = performance.getEntriesByType('navigation')[0]?.type === 'reload';
-    const LOCAL_KEY = 'maeil-study-v1';
     // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
     const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
     const GITHUB_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>';
@@ -1543,6 +1570,7 @@
       repoSearch: document.getElementById('repo-search'),
       repoBody: document.getElementById('repo-body'),
       today: document.getElementById('today'),
+      todayLink: document.getElementById('today-link'),
       todayNum: document.getElementById('today-num'),
       todayTitle: document.getElementById('today-title'),
       stats: document.getElementById('stats'),
@@ -1562,262 +1590,32 @@
       list: document.getElementById('list'),
       toast: document.getElementById('toast'),
       rowTemplate: document.getElementById('row-template'),
-      editorTemplate: document.getElementById('editor-template'),
     };
 
     let data = { questions: [], categories: [], today: null };
-    let fb = null;
-    let currentUser = null;
-    let accountMode = 'unconfigured';
     let repoCache = null;
     const rows = new Map();
-    const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
     const filter = { level: 'all', category: '', text: '', starred: false };
     // 질문을 보고 돌아와도 보던 검색어와 필터가 남도록 탭 단위(sessionStorage)로 기억한다
     const FILTER_KEY = 'maeil-filter-v1';
 
-    // ---------- 브라우저 저장소 (사생활 보호 모드 등에서 실패해도 동작하도록) ----------
-
-    function readStore(type, key) {
-      try { return JSON.parse(window[type].getItem(key)); } catch { return null; }
-    }
-
-    function writeStore(type, key, value) {
-      try { window[type].setItem(key, JSON.stringify(value)); } catch { /* 저장소를 쓸 수 없는 환경 */ }
-    }
-
-    function removeStore(type, key) {
-      try { window[type].removeItem(key); } catch { /* 저장소를 쓸 수 없는 환경 */ }
-    }
-
-    // ---------- 학습 기록 저장 ----------
-    // items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000 } }
-    // memoRepo: { id, fullName: "owner/name" } (GitHub 로그인 사용자만)
-    // 미학습은 level이 없고, 별표가 없으면 starred가 없다. patch의 null은 해당 필드를 지운다는 뜻이다.
-
-    function applyPatch(items, patch) {
-      for (const [id, fields] of Object.entries(patch)) {
-        const item = { ...items[id] };
-        for (const [key, value] of Object.entries(fields)) {
-          if (value === null) delete item[key];
-          else item[key] = value;
-        }
-        if (Object.keys(item).length) items[id] = item;
-        else delete items[id];
-      }
-    }
-
-    const localBackend = {
-      async load() {
-        return { items: readStore('localStorage', LOCAL_KEY) || {}, memoRepo: null };
-      },
-      async write(patch) {
-        const items = readStore('localStorage', LOCAL_KEY) || {};
-        applyPatch(items, patch);
-        writeStore('localStorage', LOCAL_KEY, items);
-      },
-      clear() {
-        removeStore('localStorage', LOCAL_KEY);
-      },
-    };
-
-    // Firestore: 사용자당 문서 1개(users/{uid}) → 접속 시 읽기 1회, 변경은 필드 단위 merge 쓰기
-    function createFirestoreBackend(uid) {
-      const ref = fb.fs.doc(fb.db, 'users', uid);
-      const cacheKey = `maeil-cache-${uid}`;
-      const snapshotKey = `maeil-snapshot-${uid}`; // 불러오기에 실패했을 때 보여줄 마지막 기록
-      const pendingKey = `maeil-pending-${uid}`; // 아직 쓰지 못한 변경 (새로고침해도 남아 다음 접속 때 보낸다)
-      const remember = (snapshot) => {
-        writeStore('sessionStorage', cacheKey, { at: Date.now(), ...snapshot });
-        writeStore('localStorage', snapshotKey, snapshot);
-      };
-
-      return {
-        async load({ fresh = false } = {}) {
-          const cached = readStore('sessionStorage', cacheKey);
-          if (!fresh && !PAGE_RELOADED && cached && Date.now() - cached.at < CACHE_TTL) {
-            return { items: cached.items, memoRepo: cached.memoRepo || null };
-          }
-
-          const snap = await fb.fs.getDoc(ref);
-          const doc = snap.exists() ? snap.data() : {};
-          const items = {};
-          for (const [id, item] of Object.entries(doc.items || {})) {
-            if (Object.keys(item).length) items[id] = item;
-          }
-          const loaded = { items, memoRepo: doc.memoRepo || null };
-          remember(loaded);
-          return loaded;
-        },
-        async write(patch, snapshot) {
-          const changes = {};
-          for (const [id, fields] of Object.entries(patch)) {
-            changes[id] = {};
-            for (const [key, value] of Object.entries(fields)) {
-              changes[id][key] = value === null ? fb.fs.deleteField() : value;
-            }
-          }
-          await fb.fs.setDoc(ref, { items: changes }, { merge: true });
-          remember(snapshot);
-        },
-        async saveMemoRepo(repo, snapshot) {
-          await fb.fs.setDoc(ref, { memoRepo: repo }, { mergeFields: ['memoRepo'] });
-          remember(snapshot);
-        },
-        loadSnapshot() {
-          return readStore('localStorage', snapshotKey) || { items: {}, memoRepo: null };
-        },
-        loadPending() {
-          return readStore('localStorage', pendingKey) || {};
-        },
-        savePending(pending) {
-          if (Object.keys(pending).length) writeStore('localStorage', pendingKey, pending);
-          else removeStore('localStorage', pendingKey);
-        },
-        // 로그아웃할 때 기록 사본을 지운다. 쓰지 못한 변경(pending)은 다음 로그인 때 보내려고 남긴다.
-        forget() {
-          removeStore('sessionStorage', cacheKey);
-          removeStore('localStorage', snapshotKey);
-        },
-      };
-    }
-
-    const store = {
-      backend: localBackend,
-      items: {},
-      memoRepo: null,
-      pending: {},
-      saving: null,
-      timer: 0,
-      loadedAt: 0,
-
-      item(id) {
-        return this.items[id] || {};
-      },
-
-      level(id) {
-        return this.item(id).level || 'new';
-      },
-
-      async use(backend) {
-        clearTimeout(this.timer);
-        this.backend = backend;
-        this.setLoaded(await backend.load());
-      },
-
-      // 불러오기에 실패했을 때: 마지막으로 확인한 기록을 보여주고, 변경은 모아 두었다가 나중에 쓴다
-      useOffline(backend) {
-        clearTimeout(this.timer);
-        this.backend = backend;
-        this.setLoaded(backend.loadSnapshot());
-        this.loadedAt = 0; // 탭으로 돌아오면 바로 다시 불러온다
-      },
-
-      // 저장 중인 쓰기가 없을 때만 부른다
-      async refresh() {
-        this.setLoaded(await this.backend.load({ fresh: true }));
-      },
-
-      // 아직 쓰지 못한 변경은 이 기기에서 더 나중에 바꾼 것이므로 불러온 기록 위에 덮는다
-      setLoaded({ items, memoRepo }) {
-        this.pending = this.backend.loadPending?.() || {};
-        applyPatch(items, this.pending);
-        this.items = items;
-        this.memoRepo = memoRepo;
-        this.loadedAt = Date.now();
-      },
-
-      async setMemoRepo(repo) {
-        await this.backend.saveMemoRepo(repo, { items: this.items, memoRepo: repo });
-        this.memoRepo = repo;
-      },
-
-      update(id, fields) {
-        applyPatch(this.items, { [id]: fields });
-        this.pending[id] = { ...this.pending[id], ...fields };
-        this.backend.savePending?.(this.pending);
-      },
-
-      async flush() {
-        clearTimeout(this.timer);
-        while (this.saving) await this.saving;
-
-        const patch = this.pending;
-        if (!Object.keys(patch).length) return;
-        this.pending = {};
-
-        const writing = this.backend.write(patch, { items: this.items, memoRepo: this.memoRepo });
-        this.saving = writing.catch(() => {}).finally(() => { this.saving = null; });
-        try {
-          await writing;
-        } catch (err) {
-          // 실패한 변경은 대기열로 되돌린다. 그사이 생긴 더 새로운 변경이 우선한다.
-          for (const [id, fields] of Object.entries(patch)) {
-            this.pending[id] = { ...fields, ...this.pending[id] };
-          }
-          throw err;
-        } finally {
-          this.backend.savePending?.(this.pending);
-        }
-      },
-
-      get busy() {
-        return this.saving !== null || Object.keys(this.pending).length > 0;
-      },
-    };
-
-    let saveErrorShown = false;
-
-    let retryDelay = RETRY_BASE;
+    // ---------- 저장 상태 ----------
 
     function renderSaveState(state) {
       els.saveState.dataset.state = state;
-      els.saveState.textContent = {
-        pending: '저장 중…',
-        saved: '저장됨',
-        failed: '저장 실패 · 이 기기에 보관하고 다시 시도하는 중',
-        held: '저장 거부됨 · 이 기기에 보관 중',
-      }[state] || '';
+      els.saveState.textContent = SAVE_STATE_TEXT[state] || '';
     }
 
-    // 다시 보내도 소용없는 오류(규칙 거부, 문서 크기 초과 등)는 자동 재시도를 멈추고 다음 접속 때 다시 보낸다
-    const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
-
-    function saveErrorMessage(err) {
-      if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
-      if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
-      return '저장하지 못했어요. 바꾼 내용은 이 기기에 보관했다가 연결되면 저장할게요.';
-    }
-
-    // 실패한 저장을 알리고, 일시적인 오류면 간격을 늘려 가며 다시 시도한다
-    function handleSaveError(err) {
-      console.error(err);
-      if (!saveErrorShown) toast(saveErrorMessage(err), 'error', 5000);
-      saveErrorShown = true;
-      if (isPermanentError(err)) {
-        renderSaveState('held');
-        return;
-      }
-      renderSaveState('failed');
-      clearTimeout(store.timer);
-      store.timer = setTimeout(flushInBackground, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
-    }
-
-    function flushInBackground() {
-      store.flush()
-        .then(() => {
-          saveErrorShown = false;
-          retryDelay = RETRY_BASE;
-          renderSaveState(store.busy ? 'pending' : 'saved');
-          if (accountMode === 'error') refreshIfStale(); // 쓰기가 됐으니 기록도 다시 불러와 본다
-        })
-        .catch(handleSaveError);
-    }
+    // 공용 저장 코드(memo-core.js)가 알림과 저장 상태를 이 화면에 그리게 한다
+    hooks.toast = toast;
+    hooks.renderSaveState = renderSaveState;
+    hooks.afterRetry = () => {
+      if (account.mode === 'error') refreshIfStale(); // 쓰기가 됐으니 기록도 다시 불러와 본다
+    };
 
     function saveSoon() {
       // 거부된 계정은 보내 봐야 거부되니 요청하지 않는다 (변경은 이 기기에 보관돼 있다)
-      if (accountMode === 'denied') {
+      if (account.mode === 'denied') {
         renderSaveState('held');
         return;
       }
@@ -1830,26 +1628,15 @@
 
     // ---------- Firebase ----------
 
-    async function loadFirebase() {
-      const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
-      const [app, auth, fs] = await Promise.all([
-        import(`${base}/firebase-app.js`),
-        import(`${base}/firebase-auth.js`),
-        import(`${base}/firebase-firestore-lite.js`),
-      ]);
-      const instance = app.initializeApp(firebaseConfig);
-      return { auth, fs, authInstance: auth.getAuth(instance), db: fs.getFirestore(instance) };
-    }
-
     async function initData() {
-      if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+      if (!firebaseConfigured) {
         await store.use(localBackend);
         renderAccount({ mode: 'unconfigured' });
         return;
       }
 
       try {
-        fb = await loadFirebase();
+        await loadFirebase();
       } catch (err) {
         console.error(err);
         await store.use(localBackend);
@@ -1868,7 +1655,7 @@
     async function switchUser(user) {
       await store.flush().catch(() => {});
       store.backend.forget?.();
-      currentUser = user;
+      account.user = user;
       repoCache = null;
 
       if (!user) {
@@ -1887,7 +1674,7 @@
           renderAccount({ mode: err?.code === 'permission-denied' ? 'denied' : 'error', user });
         }
         // 지난 접속에서 쓰지 못한 변경이 남아 있으면 보낸다
-        if (store.busy && accountMode !== 'denied') flushInBackground();
+        if (store.busy && account.mode !== 'denied') flushInBackground();
       }
 
       if (rows.size) renderAll();
@@ -1930,7 +1717,7 @@
 
     async function logout() {
       await store.flush().catch(() => {});
-      removeStore('localStorage', githubTokenKey(currentUser.uid));
+      removeStore('localStorage', githubTokenKey(account.user.uid));
       await fb.auth.signOut(fb.authInstance);
     }
 
@@ -1947,98 +1734,6 @@
     });
 
     // ---------- GitHub ----------
-
-    const githubTokenKey = (uid) => `maeil-github-token-${uid}`;
-
-    // Firebase는 GitHub 토큰을 로그인하는 순간에만 넘겨주므로 이 기기에 보관해 둔다
-    function rememberGithubToken(result) {
-      const token = fb.auth.GithubAuthProvider.credentialFromResult(result)?.accessToken || null;
-      if (token) writeStore('localStorage', githubTokenKey(result.user.uid), token);
-      return token;
-    }
-
-    // 이미 승인한 계정이면 GitHub 동의 화면 없이 바로 돌아온다
-    async function connectGithub() {
-      const result = await fb.auth.reauthenticateWithPopup(fb.authInstance.currentUser, new fb.auth.GithubAuthProvider());
-      return rememberGithubToken(result);
-    }
-
-    function getGithubToken() {
-      const token = readStore('localStorage', githubTokenKey(currentUser.uid));
-      return token ? Promise.resolve(token) : connectGithub();
-    }
-
-    async function githubApi(token, path, { method = 'GET', body } = {}) {
-      const res = await fetch(`https://api.github.com${path}`, {
-        method,
-        cache: 'no-store', // 커밋 직후 다시 읽을 때 오래된 sha를 받지 않도록
-        headers: {
-          Accept: 'application/vnd.github+json',
-          Authorization: `Bearer ${token}`,
-          'X-GitHub-Api-Version': '2022-11-28',
-          ...(body && { 'Content-Type': 'application/json' }),
-        },
-        body: body && JSON.stringify(body),
-      });
-      if (res.status === 401) {
-        removeStore('localStorage', githubTokenKey(currentUser.uid));
-        throw Object.assign(new Error('GitHub 토큰이 만료됐어요.'), { code: 'github/unauthorized' });
-      }
-      if (!res.ok) {
-        const { message } = await res.json().catch(() => ({}));
-        throw Object.assign(new Error(message || `GitHub API ${res.status}`), { status: res.status });
-      }
-      return res.json();
-    }
-
-    function toBase64(text) {
-      let binary = '';
-      for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-      return btoa(binary);
-    }
-
-    // 메모를 선택한 저장소의 기본 브랜치에 {id}.md로 커밋한다. 커밋 작성자는 토큰 주인(사용자)이다.
-    // 잔디는 기본 브랜치 커밋만 집계되므로 브랜치를 지정하지 않는다 (빈 저장소면 첫 커밋이 기본 브랜치를 만든다).
-    async function commitMemo(token, id, text) {
-      const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
-      const title = data.questions.find((q) => q.id === id)?.title || '';
-
-      for (let attempt = 0; ; attempt++) {
-        let sha = null;
-        try {
-          ({ sha } = await githubApi(token, path));
-        } catch (err) {
-          if (err.status !== 404) throw err; // 새 파일이거나 빈 저장소
-        }
-
-        try {
-          await githubApi(token, path, {
-            method: 'PUT',
-            body: {
-              message: `${sha ? '메모 수정' : '메모 추가'}: ${id.toUpperCase()} ${title}`.trim(),
-              content: toBase64(`${text}\n`),
-              ...(sha && { sha }),
-            },
-          });
-          return;
-        } catch (err) {
-          // 다른 기기에서 그사이 커밋해 sha가 바뀌었으면 한 번 더 시도한다
-          if (err.status !== 409 || attempt > 0) throw err;
-        }
-      }
-    }
-
-    function githubErrorMessage(err) {
-      if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
-      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
-      if (err.code === 'auth/popup-blocked') return '팝업이 차단됐어요. 다시 저장해주세요.';
-      if (err.status === 429 || /rate limit/i.test(err.message)) return 'GitHub 요청 한도에 걸렸어요. 잠시 후 다시 저장해주세요.';
-      if (err.status === 403 || err.status === 404) return '저장소에 접근할 수 없어요. 앱에 저장소가 추가돼 있는지 확인해주세요.';
-      return `(${err.message})`;
-    }
-
-    // GitHub 커밋은 Firestore와 별개라, 계정 기록을 못 불러온 상태(error)에서도 한다
-    const canCommit = () => (accountMode === 'user' || accountMode === 'error') && Boolean(store.memoRepo);
 
     // 앱을 설치한 저장소 중 잔디가 심어지는 것만 보여준다: 포크·보관 저장소 제외
     async function listInstalledRepos(token) {
@@ -2063,7 +1758,7 @@
     // ---------- 메모 저장소 선택 ----------
 
     function renderRepoCard() {
-      els.repoCard.hidden = accountMode !== 'user';
+      els.repoCard.hidden = account.mode !== 'user';
       if (els.repoCard.hidden) return;
 
       const repo = store.memoRepo;
@@ -2195,7 +1890,7 @@
     }
 
     function loadReposOrConnect(options) {
-      const token = readStore('localStorage', githubTokenKey(currentUser.uid));
+      const token = readStore('localStorage', githubTokenKey(account.user.uid));
       if (token) loadRepos(token, options);
       else connectAndLoad();
     }
@@ -2305,7 +2000,7 @@
         error: '계정 기록을 불러오지 못했어요 · 마지막으로 불러온 기록을 보여주고, 바꾼 내용은 연결되면 저장해요',
         denied: '이 계정은 기록 동기화가 허용되지 않았어요 · 바꾼 내용은 이 기기에만 보관돼요',
       };
-      accountMode = mode;
+      account.mode = mode;
       renderRepoCard();
       renderSaveState('');
       els.syncText.textContent = messages[mode];
@@ -2491,10 +2186,86 @@
       link.href = `questions/?q=${q.id}`;
       link.textContent = q.title;
       row.querySelector('.q-cat').textContent = q.category;
+      const full = row.querySelector('.q-memo-full');
+      full.id = `memo-${q.id}`;
+      row.querySelector('.q-memo-toggle').setAttribute('aria-controls', full.id);
+      memoObserver.observe(row.querySelector('.q-meta'));
       return row;
     }
 
+    // 메모 미리보기가 한 줄에 다 들어가는지는 행이 화면에 보이고 폭이 정해져야 알 수 있다.
+    // 필터로 숨었던 행이 보이거나 화면 폭이 바뀌면 메타 줄(.q-meta)의 크기가 바뀌므로 그때 다시 잰다.
+    // 미리보기 대신 메타 줄을 지켜보는 것은, 버튼을 보이고 숨길 때 바뀌는 건 미리보기 폭뿐이라
+    // 콜백 안에서 지켜보는 요소의 크기를 다시 바꾸는 루프(ResizeObserver loop 오류)가 생기지 않게 하려는 것이다.
+    const memoObserver = new ResizeObserver((entries) => {
+      for (const { target } of entries) updateMemoToggle(target.closest('.q-row'));
+    });
+
+    function updateMemoToggle(row) {
+      const preview = row.querySelector('.q-memo-preview');
+      const toggle = row.querySelector('.q-memo-toggle');
+      if (preview.hidden) {
+        toggle.hidden = true;
+        return;
+      }
+      // 펼친 상태면 접기 버튼을 그대로 두고, 화면에 없으면(폭 0) 보일 때 다시 잰다
+      if (row.classList.contains('memo-expanded') || !row.querySelector('.q-meta').clientWidth) return;
+      // 버튼 자리를 뺀 폭으로 재야, 버튼 때문에만 넘치는 메모에 버튼이 남지 않는다
+      toggle.hidden = true;
+      toggle.hidden = preview.scrollWidth <= preview.clientWidth;
+    }
+
+    function setMemoExpanded(row, expanded) {
+      row.classList.toggle('memo-expanded', expanded);
+      const memo = expanded ? store.item(row.dataset.id).memo || '' : '';
+      const full = row.querySelector('.q-memo-full');
+      full.classList.remove('is-rendered');
+      full.textContent = memo;
+      full.hidden = !expanded;
+      const toggle = row.querySelector('.q-memo-toggle');
+      toggle.textContent = expanded ? '접기' : '펼치기';
+      toggle.setAttribute('aria-expanded', String(expanded));
+      if (expanded) renderExpandedMemo(row, memo);
+      else updateMemoToggle(row);
+    }
+
+    // 처음 펼칠 때는 마크다운 파서를 받는 동안 원문을 보여주고, 받으면 바꿔 그린다. 받지 못하면 원문을 그대로 둔다
+    async function renderExpandedMemo(row, memo) {
+      try {
+        await loadMarkdown();
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      // 받는 사이 접었거나 메모가 바뀌었으면 그리지 않는다
+      if (!row.classList.contains('memo-expanded') || (store.item(row.dataset.id).memo || '') !== memo) return;
+      const full = row.querySelector('.q-memo-full');
+      try {
+        renderMarkdown(full, memo);
+        full.classList.add('is-rendered');
+      } catch (err) {
+        console.error(err);
+        full.textContent = memo;
+      }
+    }
+
+    // 행마다 지금 보여주고 있는 메모 원문 (한 줄 미리보기는 기호를 걷어 낸 글자라 원문과 비교할 수 없다)
+    const shownMemos = new WeakMap();
+
+    // 한 줄 미리보기용: 마크다운 기호를 걷어 내고 읽을 글자만 남긴다 (정확한 변환이 아니라 훑어보기 좋게 하는 정도)
+    function memoPlainText(md) {
+      return md
+        .replace(/^\s*(```|~~~).*$/gm, '') // 코드 블록 울타리
+        .replace(/^[\s|:-]+$/gm, '') // 표 구분선, 가로줄
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1') // 이미지 → 대체 글
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 링크 → 글자
+        .replace(/^\s*(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)/gm, '') // 제목·인용·목록 기호
+        .replace(/\*\*|__|~~|`/g, '') // 강조·코드 기호
+        .replace(/\s*\|\s*/g, ' '); // 표 칸 나눔
+    }
+
     function renderAll() {
+      memoObserver.disconnect();
       rows.clear();
       const fragment = document.createDocumentFragment();
       for (const q of data.questions) {
@@ -2517,6 +2288,9 @@
     }
 
     function updateRow(id) {
+      if (els.today.dataset.id === id) {
+        els.today.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(store.item(id).memo));
+      }
       const row = rows.get(id);
       if (!row) return;
       const item = store.item(id);
@@ -2531,19 +2305,35 @@
       star.setAttribute('aria-pressed', String(Boolean(item.starred)));
       star.setAttribute('aria-label', item.starred ? '별표 해제' : '별표');
 
+      // 한 줄 미리보기는 마크다운 기호를 걷어 낸 글자를 보여주고, CSS(nowrap)가 줄바꿈을 공백으로 합친다.
+      // 펼친 메모(.q-memo-full)는 마크다운으로 그린다
       const preview = row.querySelector('.q-memo-preview');
-      preview.textContent = item.memo ? item.memo.replace(/\s+/g, ' ') : '';
-      preview.hidden = !item.memo;
-      row.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(item.memo));
+      const memo = item.memo || '';
+      preview.hidden = !memo;
+      // 내용이 바뀐 행만 접고 다시 잰다 (모든 행을 재면 다시 불러올 때마다 레이아웃을 220번 계산한다)
+      if (shownMemos.get(row) !== memo) {
+        shownMemos.set(row, memo);
+        preview.textContent = memoPlainText(memo);
+        setMemoExpanded(row, false);
+      }
+      row.querySelector('.memo-btn').classList.toggle('has-memo', Boolean(memo));
     }
 
+    // 목록을 다시 그릴 때(계정 전환) 목록의 편집기처럼 열려 있던 편집기를 닫는다
     function renderToday() {
       const q = data.today;
+      editorOf(els.today)?.remove();
+      els.today.querySelector('.memo-btn').setAttribute('aria-expanded', 'false');
       els.today.hidden = !q;
-      if (!q) return;
-      els.today.href = `questions/?q=${q.id}`;
+      if (!q) {
+        delete els.today.dataset.id;
+        return;
+      }
+      els.today.dataset.id = q.id;
+      els.todayLink.href = `questions/?q=${q.id}`;
       els.todayNum.textContent = q.id.toUpperCase(); // 예: FE-46
       els.todayTitle.textContent = q.title;
+      updateRow(q.id);
     }
 
     function updateStats() {
@@ -2692,61 +2482,49 @@
       saveSoon();
     }
 
+    // 메모 편집기는 목록의 행이나 오늘 받은 질문 카드(둘 다 data-id와 .memo-btn이 있다) 안에 연다.
+    // 아래 함수의 row는 이 둘 중 하나다. 편집기 자체는 공용 코드(memo-core.js)가 만들고 다룬다.
     function editorOf(row) {
       return row.querySelector('.memo-editor');
     }
 
-    // 고친 내용이 있거나, 저장은 됐지만 GitHub 커밋이 실패해 다시 올려야 하는 상태
+    function memoHosts() {
+      return els.today.dataset.id ? [els.today, ...rows.values()] : [...rows.values()];
+    }
+
+    const memoHostOf = (el) => el.closest('.q-row, .today');
+
     function isDirty(row) {
-      const textarea = editorOf(row)?.querySelector('textarea');
-      if (!textarea) return false;
-      const text = textarea.value.trim();
-      return text !== (store.item(row.dataset.id).memo || '') || (Boolean(text) && uncommitted.has(row.dataset.id));
+      const editor = editorOf(row);
+      return Boolean(editor) && isEditorDirty(editor);
     }
 
     function hasDirtyEditor() {
-      return [...rows.values()].some(isDirty);
-    }
-
-    function autosize(textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight + 2}px`;
-    }
-
-    const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-    function updateEditor(row) {
-      const editor = editorOf(row);
-      if (!editor) return;
-      const item = store.item(row.dataset.id);
-      editor.querySelector('.memo-count').textContent = `${editor.querySelector('textarea').value.length} / ${MEMO_MAX}`;
-      editor.querySelector('.memo-saved').textContent = item.memoAt
-        ? `마지막 저장 ${dateFormat.format(item.memoAt)}`
-        : '';
-
-      const github = editor.querySelector('.memo-github');
-      const failed = uncommitted.has(row.dataset.id);
-      github.classList.toggle('is-error', failed);
-      github.textContent = !canCommit() || !editor.querySelector('textarea').value.trim() ? ''
-        : failed ? 'GitHub에 아직 올리지 못했어요 · 다시 저장해주세요'
-        : `저장하면 ${store.memoRepo.fullName}의 ${row.dataset.id}.md로 커밋돼요`;
-
-      editor.querySelector('[data-action="memo-save"]').disabled = !isDirty(row);
+      return memoHosts().some(isDirty);
     }
 
     function openEditor(row) {
-      const editor = els.editorTemplate.content.firstElementChild.cloneNode(true);
+      const id = row.dataset.id;
+      // 한 질문의 편집기는 하나만 연다. 다른 곳(목록 ↔ 오늘 받은 질문)에 열려 있으면 쓰던 내용 그대로 이리로 옮긴다
+      const from = memoHosts().find((host) => host !== row && host.dataset.id === id && editorOf(host));
+      const editor = from ? editorOf(from) : createEditor(id);
+      from?.querySelector('.memo-btn').setAttribute('aria-expanded', 'false');
       const textarea = editor.querySelector('textarea');
-      textarea.maxLength = MEMO_MAX;
-      textarea.value = store.item(row.dataset.id).memo || '';
-      textarea.setAttribute('aria-label', `${row.dataset.id.toUpperCase()} 메모`);
+      // 옮길 때는 쓰던 커서 자리를 지키고, 새로 열 때는 글 끝에 둔다
+      const caret = from ? [textarea.selectionStart, textarea.selectionEnd] : [textarea.value.length, textarea.value.length];
 
+      if (row.classList.contains('q-row')) setMemoExpanded(row, false); // 편집기와 같은 내용이 두 번 보이지 않게 접는다
       row.append(editor);
       row.querySelector('.memo-btn').setAttribute('aria-expanded', 'true');
-      updateEditor(row);
+      updateEditor(editor);
       autosize(textarea);
+      // 미리보기 중에 옮겼으면 미리보기 탭에 포커스를 둔다
+      if (textarea.hidden) {
+        editor.querySelector('[data-action="memo-preview"]').focus();
+        return;
+      }
       textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      textarea.setSelectionRange(...caret);
     }
 
     function closeEditor(row) {
@@ -2759,82 +2537,50 @@
       memoButton.focus();
     }
 
-    async function saveMemo(row) {
-      const id = row.dataset.id;
+    function setMemoMode(row, mode) {
       const editor = editorOf(row);
-      const textarea = editor.querySelector('textarea');
-      const saveButton = editor.querySelector('[data-action="memo-save"]');
-      const text = textarea.value.trim();
-      const changed = text !== (store.item(id).memo || '');
-      // 메모를 지울 때는 GitHub 파일을 그대로 둔다 (학습 기록으로 남긴다)
-      const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
-
-      textarea.value = text;
-      saveButton.disabled = true;
-      saveButton.textContent = '저장 중…';
-      if (changed) {
-        store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
-        updateRow(id);
-        renderSaveState('pending');
-      }
-
-      // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
-      const [saved, committed] = await Promise.allSettled([
-        changed ? store.flush() : Promise.resolve(),
-        shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text)) : Promise.resolve(),
-      ]);
-
-      if (shouldCommit) {
-        if (committed.status === 'fulfilled') uncommitted.delete(id);
-        else uncommitted.add(id);
-      }
-
-      if (changed && saved.status === 'fulfilled') renderSaveState(store.busy ? 'pending' : 'saved');
-
-      if (saved.status === 'rejected') {
-        saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
-        handleSaveError(saved.reason);
-      } else if (committed.status === 'rejected') {
-        console.error(committed.reason);
-        toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
-      } else {
-        saveErrorShown = false;
-        retryDelay = RETRY_BASE;
-        toast(shouldCommit
-          ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
-          : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
-      }
-
-      saveButton.textContent = '저장';
-      updateEditor(row);
+      if (editor) setEditorMode(editor, mode);
     }
 
-    // 다른 기기에서 바꾼 내용을 보도록, 오래 자리를 비웠다 돌아오면 다시 읽는다 (Firestore 읽기 1회)
+    function saveMemo(row) {
+      const id = row.dataset.id;
+      return saveMemoEditor(editorOf(row), {
+        title: data.questions.find((q) => q.id === id)?.title || '',
+        onChange: updateRow,
+      });
+    }
+
+    // 다시 불러온 기록으로 화면을 고친다. 고치던 메모가 있거나 쓰는 중이면 다음 기회로 미룬다.
+    // fresh가 아니면 탭 단위 캐시가 있을 때 그것을 읽는다 (질문 화면에서 저장한 기록도 캐시에 들어 있다).
     // 계정 기록을 못 불러온 상태(error)였다면 다시 불러오는 데 성공한 순간 정상으로 돌아온다
-    async function refreshIfStale() {
-      if ((accountMode !== 'user' && accountMode !== 'error') || store.saving || hasDirtyEditor()) return;
-      if (Date.now() - store.loadedAt < STALE_AFTER) return;
+    async function reloadRecords({ fresh = true } = {}) {
+      if (account.mode === 'denied' || !store.canReload || hasDirtyEditor()) return;
       try {
-        await store.refresh();
+        await store.refresh({ fresh });
       } catch (err) {
         console.error(err);
         return;
       }
-      if (accountMode === 'error') {
-        renderAccount({ mode: 'user', user: currentUser });
+      // 캐시를 읽은 것만으로는 Firestore에 다시 닿았는지 알 수 없다
+      if (account.mode === 'error' && fresh) {
+        renderAccount({ mode: 'user', user: account.user });
         if (store.busy) flushInBackground();
       }
 
       for (const q of data.questions) updateRow(q.id);
-      for (const row of rows.values()) {
-        const textarea = editorOf(row)?.querySelector('textarea');
-        if (!textarea) continue;
-        textarea.value = store.item(row.dataset.id).memo || '';
-        autosize(textarea);
-        updateEditor(row);
+      for (const row of memoHosts()) {
+        const editor = editorOf(row);
+        if (editor) resetEditor(editor);
       }
       updateStats();
       renderRepoCard();
+    }
+
+    // 다른 기기나 다른 탭에서 바꾼 내용을 보도록, 오래 자리를 비웠거나 다른 탭이 기록을 썼으면(watchOtherTabs) 돌아올 때 다시 읽는다
+    // (Firestore 읽기: 기본 문서 1회 + 메모 묶음 최대 4회. 이 브라우저에만 저장할 때는 브라우저 저장소를 다시 읽는다)
+    async function refreshIfStale() {
+      if (Date.now() - store.loadedAt < STALE_AFTER) return;
+      await reloadRecords();
     }
 
     // ---------- 기타 ----------
@@ -2858,6 +2604,14 @@
       });
     }
 
+    function handleMemoAction(row, action) {
+      if (action === 'memo') editorOf(row) ? closeEditor(row) : openEditor(row);
+      else if (action === 'memo-close') closeEditor(row);
+      else if (action === 'memo-save') saveMemo(row);
+      else if (action === 'memo-write') setMemoMode(row, 'write');
+      else if (action === 'memo-preview') setMemoMode(row, 'preview');
+    }
+
     function bindEvents() {
       els.list.addEventListener('click', (e) => {
         const row = e.target.closest('.q-row');
@@ -2871,27 +2625,34 @@
 
         const action = e.target.closest('[data-action]')?.dataset.action;
         if (action === 'star') toggleStar(row.dataset.id);
-        else if (action === 'memo') editorOf(row) ? closeEditor(row) : openEditor(row);
-        else if (action === 'memo-close') closeEditor(row);
-        else if (action === 'memo-save') saveMemo(row);
+        else if (action === 'memo-toggle') setMemoExpanded(row, !row.classList.contains('memo-expanded'));
+        else handleMemoAction(row, action);
       });
 
-      els.list.addEventListener('input', (e) => {
-        if (!e.target.matches('.memo-editor textarea')) return;
-        autosize(e.target);
-        updateEditor(e.target.closest('.q-row'));
+      els.today.addEventListener('click', (e) => {
+        if (!els.today.dataset.id) return;
+        handleMemoAction(els.today, e.target.closest('[data-action]')?.dataset.action);
       });
 
-      els.list.addEventListener('keydown', (e) => {
-        if (!e.target.matches('.memo-editor textarea')) return;
-        const row = e.target.closest('.q-row');
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          if (isDirty(row)) saveMemo(row);
-        } else if (e.key === 'Escape') {
-          closeEditor(row);
-        }
-      });
+      // 편집기 입력은 목록과 오늘 받은 질문 카드에서 똑같이 다룬다
+      for (const container of [els.list, els.today]) {
+        container.addEventListener('input', (e) => {
+          if (!e.target.matches('.memo-editor textarea')) return;
+          autosize(e.target);
+          updateEditor(e.target.closest('.memo-editor'));
+        });
+
+        container.addEventListener('keydown', (e) => {
+          if (!e.target.matches('.memo-editor textarea')) return;
+          const row = memoHostOf(e.target);
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (isDirty(row)) saveMemo(row);
+          } else if (e.key === 'Escape') {
+            closeEditor(row);
+          }
+        });
+      }
 
       els.stats.addEventListener('click', (e) => {
         const button = e.target.closest('[data-filter]');
@@ -2955,7 +2716,7 @@
       // 질문을 열기 전에 아직 쓰지 않은 변경을 먼저 저장한다 (저장이 실패하는 중이면 기다리지 않는다. 변경은 이 기기에 보관돼 있다)
       document.addEventListener('click', async (e) => {
         const link = e.target.closest('a.q-link');
-        if (!link || !store.busy || saveErrorShown || accountMode === 'denied') return;
+        if (!link || !store.busy || saveErrorShown || account.mode === 'denied') return;
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
         await Promise.race([
@@ -2966,13 +2727,25 @@
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown && accountMode !== 'denied') flushInBackground();
+        if (document.visibilityState === 'hidden' && store.busy && !saveErrorShown && account.mode !== 'denied') flushInBackground();
         else if (document.visibilityState === 'visible') refreshIfStale();
       });
 
-      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모 편집뿐이다
+      // 다른 탭(질문 화면 등)이 기록을 쓰면 낡았다고 표시해 두고, 이 탭이 보일 때 다시 읽는다
+      watchOtherTabs(() => {
+        if (document.visibilityState === 'visible') refreshIfStale();
+      });
+
+      // 뒤로가기로 돌아오면(bfcache) 떠날 때 상태 그대로 보이므로, 그사이 질문 화면에서 저장한 메모를 반영하도록 다시 읽는다.
+      // 질문 화면의 저장도 이 탭의 캐시를 고쳐 두므로 Firestore를 다시 읽지 않는다
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) reloadRecords({ fresh: false });
+      });
+
+      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모 편집과
+      // 저장 공간이 부족해 이 기기에도 보관하지 못한 변경뿐이다
       window.addEventListener('beforeunload', (e) => {
-        if (hasDirtyEditor()) {
+        if (hasDirtyEditor() || (store.busy && !store.pendingKept)) {
           e.preventDefault();
           e.returnValue = '';
         }
@@ -3004,7 +2777,7 @@
       // GitHub 앱 설치를 마치고 돌아오면(Setup URL에 setup_action이 붙는다) 저장소 선택 창을 바로 연다
       if (new URLSearchParams(location.search).has('setup_action')) {
         history.replaceState(null, '', location.pathname);
-        if (accountMode === 'user') openRepoDialog();
+        if (account.mode === 'user') openRepoDialog();
       }
     }
 
