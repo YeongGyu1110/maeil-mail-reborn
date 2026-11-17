@@ -24,8 +24,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          # 실행이 예약된 시점이 아니라 지금의 최신 progress.json으로 판단하도록 기본 브랜치 끝을 받는다
-          ref: ${{ github.event.repository.default_branch }}
+          # 실행이 예약된 시점이 아니라 지금의 최신 progress.json으로 판단하도록 기본 브랜치 끝을 받는다.
+          # 브랜치 이름을 주면 그 순간의 끝을, 비우면 이벤트에 고정된 커밋을 받는다. Re-run도 원래 커밋을 다시 쓰므로
+          # 비워 두면 이미 보낸 메일을 또 보낸다. 정기 실행 이벤트에는 저장소 정보가 없어 default_branch가 비므로
+          # ref_name으로 대신한다 (정기 실행은 항상 기본 브랜치에서 돈다).
+          ref: ${{ github.event.repository.default_branch || github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
