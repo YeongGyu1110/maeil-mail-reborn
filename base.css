@@ -1,0 +1,500 @@
+/* 두 화면(질문 목록 index.html, 질문 화면 questions/index.html)이 같이 쓰는 바탕:
+   색 변수, 글꼴, 스크롤바, 상단 바, 버튼, 학습 수준 표시, 확인 창, 토스트, 스켈레톤.
+   화면마다 다른 배치는 각 화면의 <style>에, 메모 보기·편집기는 memo.css에 둔다. */
+
+:root {
+  /* [라이트 모드] 책상(캔버스) 위에 놓인 흰 종이 */
+  --bg-canvas: #e9ecef;
+  --bg-paper: #fdfdfd;
+  --bg-subtle: #f3f4f6;
+  --bg-hover: #e5e8eb;
+  --rule: #e1e5e9;
+  --rule-strong: #8a939d;
+  --paper-shadow: 0 1px 2px rgba(20, 23, 26, 0.06), 0 4px 16px rgba(20, 23, 26, 0.05);
+  --pop-shadow: 0 2px 6px rgba(20, 23, 26, 0.08), 0 12px 32px rgba(20, 23, 26, 0.16);
+  --scrollbar: #b6bdc5;
+  --scrollbar-hover: #8a939d;
+
+  --text-main: #14171a;
+  --text-sub: #333d4b;
+  --text-muted: #6b7682;
+
+  --primary: #00875a;
+  --primary-light: #e3f3ec;
+  --primary-ink: #ffffff;
+  --review: #a85f06;
+  --review-bar: #e8960c;
+  --review-light: #fbf0de;
+  --star: #d99400;
+  --danger: #c62828;
+  --danger-light: #fbe9e9;
+
+  --skeleton-base: #eceef1;
+  --skeleton-highlight: #dde1e5;
+
+  /* 코드 블록 (답변 본문과 메모가 같은 색을 쓴다) */
+  --code-block-bg: #f3f5f7;
+  --code-block-text: #1e293b;
+  --code-inline-bg: #eef0f3;
+  --code-inline-color: #1e293b;
+
+  --syntax-comment: #64748b;
+  --syntax-punctuation: #475569;
+  --syntax-keyword: #c2410c;
+  --syntax-tag: #15803d;
+  --syntax-string: #0369a1;
+  --syntax-number: #0284c7;
+  --syntax-function: #7c3aed;
+  --syntax-operator: #c2410c;
+  --syntax-variable: #b45309;
+
+  --nav-height: 52px;
+  --radius: 4px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* [다크 모드] 무채색 흑연 캔버스 위의 짙은 종이 */
+[data-theme="dark"] {
+  --bg-canvas: #111113;
+  --bg-paper: #1a1a1c;
+  --bg-subtle: #212124;
+  --bg-hover: #29292d;
+  --rule: #2c2c31;
+  --rule-strong: #6c727b;
+  --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --pop-shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --scrollbar: #3a3a3f;
+  --scrollbar-hover: #5a5a61;
+
+  --text-main: #f0f2f5;
+  --text-sub: #c4c8cf;
+  --text-muted: #8a919b;
+
+  --primary: #00c47d;
+  --primary-light: rgba(0, 196, 125, 0.13);
+  --primary-ink: #0c1512;
+  --review: #fbbf24;
+  --review-bar: #f5a524;
+  --review-light: rgba(251, 191, 36, 0.13);
+  --star: #fcc419;
+  --danger: #f87171;
+  --danger-light: rgba(248, 113, 113, 0.12);
+
+  --skeleton-base: #232326;
+  --skeleton-highlight: #2e2e32;
+
+  --code-block-bg: #141416;
+  --code-block-text: #e2e8f0;
+  --code-inline-bg: #29292d;
+  --code-inline-color: #e2e8f0;
+
+  --syntax-comment: #828d9d;
+  --syntax-punctuation: #94a3b8;
+  --syntax-keyword: #fb923c;
+  --syntax-tag: #4ade80;
+  --syntax-string: #7dd3fc;
+  --syntax-number: #38bdf8;
+  --syntax-function: #c084fc;
+  --syntax-operator: #fb923c;
+  --syntax-variable: #fbbf24;
+}
+
+* { box-sizing: border-box; }
+
+/* 내용 길이에 따라 스크롤바가 생기거나 사라져도 화면이 옆으로 밀리지 않게 자리를 비워 둔다 */
+html { scrollbar-gutter: stable; }
+
+/* 스크롤바: 화살표 없이 얇고 각진 막대만 남긴다 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-track { background: var(--bg-canvas); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 2px;
+  background: var(--scrollbar) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover) padding-box; }
+
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar) transparent;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  line-height: 1.6;
+  letter-spacing: -0.015em;
+  color: var(--text-sub);
+  background-color: var(--bg-canvas);
+  transition: background-color 0.15s ease, color 0.15s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] { display: none !important; }
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- 상단 바: 캔버스와 같은 면, 구분선 없음 ---------- */
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: var(--nav-height);
+  padding: 0 24px;
+  background-color: var(--bg-canvas);
+}
+
+.nav-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--text-main);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nav-brand .brand-dot {
+  width: 7px;
+  height: 7px;
+  background-color: var(--primary);
+  border-radius: 1px;
+}
+
+.nav-separator {
+  color: var(--rule-strong);
+  user-select: none;
+}
+
+.nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.nav-link:hover { color: var(--text-main); }
+
+.nav-current {
+  color: var(--text-main);
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ---------- 버튼: 테두리 없는 글자형이 기본 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: transparent;
+  color: var(--text-sub);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, filter 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn svg { flex-shrink: 0; }
+
+.btn-primary,
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--primary);
+  color: var(--primary-ink);
+}
+
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+
+.btn-danger,
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--danger);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-danger,
+[data-theme="dark"] .btn-danger:hover:not(:disabled) { color: #1f0d0d; }
+
+.btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* 옅은 면 위에 놓는 보조 버튼 */
+.btn-soft { background-color: var(--bg-subtle); }
+
+.btn-sm {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12.5px;
+}
+
+.btn-icon {
+  width: 32px;
+  padding: 0;
+}
+
+.btn-sm.btn-icon { width: 28px; }
+
+.sun-icon { display: none; }
+.moon-icon { display: block; }
+[data-theme="dark"] .sun-icon { display: block; }
+[data-theme="dark"] .moon-icon { display: none; }
+
+/* 글자처럼 보이는 작은 버튼 */
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- 학습 수준: 점 + 이름 ---------- */
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  background: var(--rule-strong);
+}
+
+.dot-review { background: var(--review-bar); }
+.dot-done { background: var(--primary); }
+
+/* 지금 학습 수준을 보여주는 표식 (누를 수 없는 것과 링크 모두) */
+.level-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.level-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--rule-strong);
+}
+
+.level-badge[data-level="review"] {
+  background: var(--review-light);
+  color: var(--review);
+}
+
+.level-badge[data-level="review"]::before { background: var(--review-bar); }
+
+.level-badge[data-level="done"] {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.level-badge[data-level="done"]::before { background: var(--primary); }
+
+/* ---------- 저장 상태: 어디에 저장되는지(점) + 방금 한 저장의 결과 ---------- */
+.sync-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  vertical-align: 1.5px;
+  background: var(--text-muted);
+}
+
+[data-state="synced"] > .sync-dot { background: var(--primary); }
+[data-state="error"] > .sync-dot { background: var(--danger); }
+
+.save-state { font-weight: 600; }
+.save-state:empty { display: none; }
+.save-state[data-state="saved"] { color: var(--primary); }
+.save-state[data-state="failed"],
+.save-state[data-state="unkept"],
+.save-state[data-state="full"] { color: var(--danger); }
+
+/* ---------- 확인 창 ---------- */
+.confirm-dialog {
+  width: min(400px, calc(100% - 32px));
+  padding: 24px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--bg-paper);
+  color: var(--text-sub);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+}
+
+.confirm-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--text-main);
+}
+
+.confirm-dialog p {
+  margin: 0;
+  font-size: 14px;
+  word-break: keep-all;
+}
+
+.confirm-dialog .confirm-warning {
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 20px;
+}
+
+/* ---------- 토스트 ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 200;
+  max-width: calc(100% - 32px);
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  background: var(--text-main);
+  color: var(--bg-paper);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: keep-all;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast[data-tone="error"] {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+/* ---------- 코드 색칠 (Prism 토큰: 답변 본문과 메모가 같이 쓴다) ---------- */
+.token.comment, .token.prolog, .token.doctype, .token.cdata { color: var(--syntax-comment); font-style: italic; }
+.token.punctuation { color: var(--syntax-punctuation); }
+.token.property, .token.tag, .token.boolean, .token.constant, .token.symbol { color: var(--syntax-tag); }
+.token.number { color: var(--syntax-number); }
+.token.string, .token.char, .token.builtin, .token.inserted { color: var(--syntax-string); }
+.token.operator, .token.entity, .token.url { color: var(--syntax-operator); }
+.token.keyword { color: var(--syntax-keyword); font-weight: 600; }
+.token.function, .token.class-name { color: var(--syntax-function); }
+.token.variable { color: var(--syntax-variable); }
+
+/* ---------- 스켈레톤 로딩 ---------- */
+.skeleton {
+  background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 2px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (max-width: 640px) {
+  .top-nav { padding: 0 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

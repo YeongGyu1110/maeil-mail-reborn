@@ -1,5 +1,6 @@
-// 메모 저장·편집 공용 코드: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
-// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 마크다운 미리보기, 메모 편집기를 담는다.
+// 학습 기록 공용 코드: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
+// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 메모 마크다운 그리기, 메모 저장을 담는다.
+// 메모 보기·편집기 화면은 memo-ui.js가 맡는다 (질문 화면만 쓴다).
 // 두 화면이 같은 저장 코드와 같은 브라우저 저장소 키를 쓰므로, 한 화면에서 저장한 기록을 다른 화면이 그대로 이어 읽는다.
 import { firebaseConfig } from './firebase-config.js';
 
@@ -500,7 +501,7 @@ const canCommit = () => (account.mode === 'user' || account.mode === 'error') &&
 
 // ---------- 메모 마크다운 ----------
 // 질문 화면과 같은 파일·버전·integrity를 쓴다 (브라우저 캐시를 같이 쓰고, CDN 파일이 바뀌면 실행하지 않는다).
-// 질문 목록에서는 미리보기를 처음 열 때만 불러온다. 질문 화면은 본문을 그리려고 이미 불러와 두었으니 다시 받지 않는다.
+// 질문 화면은 본문을 그리려고 이미 불러와 두었으니 다시 받지 않는다 (페이지에 없을 때만 받는다).
 // jsx는 javascript 뒤, tsx는 jsx와 typescript 뒤에 와야 한다.
 const MARKDOWN_SCRIPTS = [
   ['https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js', 'sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+'],
@@ -595,161 +596,50 @@ export function renderMarkdown(container, text) {
   window.Prism?.highlightAllUnder?.(container);
 }
 
-function previewNote(text) {
-  const note = document.createElement('p');
-  note.className = 'memo-preview-note';
-  note.textContent = text;
-  return note;
-}
+// ---------- 학습 수준·별표 저장 ----------
 
-let previewRuns = 0;
+const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
 
-async function renderMemoPreview(editor) {
-  const preview = editor.querySelector('.memo-preview');
-  if (preview.hidden) return;
-  const text = editor.querySelector('textarea').value;
-  if (!text.trim()) {
-    preview.replaceChildren(previewNote('미리 볼 내용이 없어요.'));
+// store.update로 바꾼 학습 수준·별표를 곧 저장한다
+export function saveSoon() {
+  // 거부된 계정은 보내 봐야 거부되니 요청하지 않는다 (변경은 이 기기에 보관돼 있다)
+  if (account.mode === 'denied') {
+    hooks.renderSaveState('held');
     return;
   }
-
-  const run = String(++previewRuns);
-  preview.dataset.run = run;
-  if (!window.marked) preview.replaceChildren(previewNote('미리보기를 준비하는 중…'));
-  try {
-    await loadMarkdown();
-  } catch (err) {
-    console.error(err);
-    if (preview.dataset.run === run) preview.replaceChildren(previewNote('미리보기를 불러오지 못했어요. 연결을 확인하고 미리보기를 다시 눌러주세요.'));
-    return;
-  }
-  // 불러오는 사이 작성으로 돌아갔거나 더 나중에 그리기 시작했으면 그대로 둔다
-  if (preview.hidden || preview.dataset.run !== run) return;
-  try {
-    renderMarkdown(preview, text);
-  } catch (err) {
-    console.error(err);
-    preview.replaceChildren(previewNote('이 메모는 미리보기로 그리지 못했어요.'));
-  }
+  hooks.renderSaveState('pending');
+  clearTimeout(store.timer);
+  // 이 브라우저에만 저장할 때는 비용이 없으니 바로 쓴다
+  if (store.backend === localBackend) flushInBackground();
+  else store.timer = setTimeout(flushInBackground, LEVEL_SAVE_DELAY);
 }
 
-// ---------- 메모 편집기 ----------
-// 편집기 하나가 질문 하나(data-id)의 메모를 고친다. 놓을 자리와 열고 닫기는 각 화면이 정한다.
-// 버튼은 data-action(memo-write, memo-preview, memo-save, memo-close)만 달려 있고, 누를 때 할 일도 각 화면이 연결한다.
+// ---------- 메모 저장 ----------
+// 편집기 모양은 질문 화면이 정하고, 여기서는 글자를 받아 기록에 쓰고 GitHub에 커밋하는 일만 한다.
 
 export const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
 
-const EDITOR_HTML = `
-  <div class="memo-tabs" role="group" aria-label="메모 보기">
-    <button type="button" class="memo-tab" data-action="memo-write" aria-pressed="true">작성</button>
-    <button type="button" class="memo-tab" data-action="memo-preview" aria-pressed="false">미리보기</button>
-    <span class="memo-tabs-meta">
-      <span class="memo-tabs-hint">마크다운 사용 가능</span>
-      <span class="memo-count"></span>
-    </span>
-  </div>
-  <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
-  <div class="memo-preview memo-md" hidden></div>
-  <div class="memo-footer">
-    <div class="memo-info">
-      <span class="memo-saved"></span>
-      <span class="memo-github"></span>
-    </div>
-    <div class="memo-buttons">
-      <button type="button" class="btn btn-sm" data-action="memo-close">닫기</button>
-      <button type="button" class="btn btn-sm btn-primary" data-action="memo-save">저장</button>
-    </div>
-  </div>`;
+// 저장할 때 GitHub에도 커밋하는지
+export const canCommitMemo = canCommit;
 
-// closable이 아니면 닫기 버튼을 두지 않는다 (늘 펼쳐 두는 편집기)
-export function createEditor(id, { closable = true } = {}) {
-  const editor = document.createElement('div');
-  editor.className = 'memo-editor';
-  editor.dataset.id = id;
-  editor.innerHTML = EDITOR_HTML;
-  if (!closable) editor.querySelector('[data-action="memo-close"]').remove();
-  const textarea = editor.querySelector('textarea');
-  textarea.maxLength = MEMO_MAX;
-  textarea.value = store.item(id).memo || '';
-  textarea.setAttribute('aria-label', `${id.toUpperCase()} 메모`);
-  return editor;
+// 편집기 꼬리에 보여줄 GitHub 안내 (커밋하지 않으면 빈 문자열)
+export function memoCommitNote(id) {
+  if (!canCommit()) return '';
+  return `저장하면 ${store.memoRepo.fullName}의 ${id}.md로 커밋돼요`;
 }
 
-// 고친 내용이 있거나, 저장은 됐지만 GitHub 커밋이 실패해 다시 올려야 하는 상태
-export function isEditorDirty(editor) {
-  const id = editor.dataset.id;
-  const text = editor.querySelector('textarea').value.trim();
-  return text !== (store.item(id).memo || '') || (Boolean(text) && uncommitted.has(id));
-}
-
-// 미리보기 중(숨긴 칸)에는 높이를 잴 수 없으니 작성으로 돌아올 때 잰다
-export function autosize(textarea) {
-  if (textarea.hidden) return;
-  textarea.style.height = 'auto';
-  textarea.style.height = `${textarea.scrollHeight + 2}px`;
-}
-
-const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-export function updateEditor(editor) {
-  const id = editor.dataset.id;
-  const item = store.item(id);
-  editor.querySelector('.memo-count').textContent = `${editor.querySelector('textarea').value.length} / ${MEMO_MAX}`;
-  editor.querySelector('.memo-saved').textContent = item.memoAt
-    ? `마지막 저장 ${dateFormat.format(item.memoAt)}`
-    : '';
-
-  const github = editor.querySelector('.memo-github');
-  const failed = uncommitted.has(id);
-  github.classList.toggle('is-error', failed);
-  github.textContent = !canCommit() || !editor.querySelector('textarea').value.trim() ? ''
-    : failed ? 'GitHub에 아직 올리지 못했어요 · 다시 저장해주세요'
-    : `저장하면 ${store.memoRepo.fullName}의 ${id}.md로 커밋돼요`;
-
-  editor.querySelector('[data-action="memo-save"]').disabled = !isEditorDirty(editor);
-}
-
-export function setEditorMode(editor, mode) {
-  const textarea = editor.querySelector('textarea');
-  const preview = editor.querySelector('.memo-preview');
-  textarea.hidden = mode === 'preview';
-  preview.hidden = mode !== 'preview';
-  for (const tab of editor.querySelectorAll('.memo-tab')) {
-    tab.setAttribute('aria-pressed', String(tab.dataset.action === `memo-${mode}`));
-  }
-  if (mode === 'preview') {
-    renderMemoPreview(editor);
-  } else {
-    autosize(textarea);
-    textarea.focus();
-  }
-}
-
-// 다시 불러온 기록으로 편집기 내용을 바꾼다 (고치던 내용이 없을 때만 부른다)
-export function resetEditor(editor) {
-  const textarea = editor.querySelector('textarea');
-  textarea.value = store.item(editor.dataset.id).memo || '';
-  autosize(textarea);
-  updateEditor(editor);
-  renderMemoPreview(editor); // 미리보기 중이면 새 내용으로 다시 그린다
-}
-
-// title은 GitHub 커밋 메시지에 붙일 질문 제목, onChange는 기록이 바뀐 직후 화면을 고칠 때 부른다
-export async function saveMemo(editor, { title = '', onChange = () => {} } = {}) {
-  const id = editor.dataset.id;
-  const textarea = editor.querySelector('textarea');
-  const saveButton = editor.querySelector('[data-action="memo-save"]');
-  const text = textarea.value.trim();
+// 메모를 저장한다. 빈 글이면 메모를 지운다 (GitHub 파일은 학습 기록으로 그대로 둔다).
+// GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후 await 없이 불러야 한다.
+// title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지다.
+// 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
+export async function saveMemo(id, rawText, { title = '' } = {}) {
+  const text = rawText.trim();
   const changed = text !== (store.item(id).memo || '');
-  // 메모를 지울 때는 GitHub 파일을 그대로 둔다 (학습 기록으로 남긴다)
   const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
+  if (!changed && !shouldCommit) return { saved: true, changed: false };
 
-  textarea.value = text;
-  saveButton.disabled = true;
-  saveButton.textContent = '저장 중…';
   if (changed) {
     store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
-    onChange(id);
     hooks.renderSaveState('pending');
   }
 
@@ -779,6 +669,5 @@ export async function saveMemo(editor, { title = '', onChange = () => {} } = {})
       : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
   }
 
-  saveButton.textContent = '저장';
-  updateEditor(editor);
+  return { saved: saved.status === 'fulfilled', changed };
 }
