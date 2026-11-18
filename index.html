@@ -981,7 +981,19 @@
         box-shadow: none;
         padding: 28px 20px 16px;
       }
-      .doc-header h1 { font-size: 23px; }
+      /* 페이지 이름은 상단 바(질문 목록)에 이미 있으니, 좁은 화면에서는 머리를 화면에서 빼서 검색창을 끌어올린다.
+         화면 읽기 도구에는 제목(h1)으로 남긴다 */
+      .doc-header {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
+      }
       .q-row::before,
       .q-title::after { inset: 0 -8px; }
     }
