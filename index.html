@@ -384,35 +384,30 @@
       color: var(--text-main);
     }
 
-    /* 오늘의 질문: 카드 전체가 질문 화면으로 가는 링크 하나다 */
+    /* 오늘 받은 질문: 면을 칠하지 않고 왼쪽 세로줄 하나로만 표시하는 머리글 (본문의 인용구와 같은 문서식 표시).
+       윗줄은 머리말과 내 학습 상태, 아랫줄은 질문 제목. 블록 전체가 질문 화면으로 가는 링크다 */
     .today {
       display: block;
       margin-bottom: 28px;
-      padding: 18px 20px 16px;
-      border-radius: var(--radius);
-      background: var(--primary-light);
+      padding: 2px 0 2px 16px;
+      border-left: 2px solid var(--primary);
       color: inherit;
       text-decoration: none;
-      transition: box-shadow 0.15s;
     }
-
-    .today:hover { box-shadow: inset 0 0 0 1px var(--primary); }
 
     .today-top {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 4px 8px;
-      min-height: 24px;
-      font-size: 12.5px;
-      font-weight: 700;
-      color: var(--primary);
+      gap: 8px;
+      height: 24px;
     }
 
-    .today-num {
+    .today-label {
+      font-size: 12.5px;
       font-weight: 600;
-      color: var(--text-muted);
+      color: var(--primary);
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .today-top .level-badge,
@@ -424,14 +419,16 @@
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      font-size: 12.5px;
       font-weight: 600;
       color: var(--text-muted);
+      white-space: nowrap;
     }
 
     .today-title {
       display: block;
-      margin-top: 4px;
-      font-size: 18px;
+      margin-top: 2px;
+      font-size: 17px;
       font-weight: 700;
       line-height: 1.5;
       color: var(--text-main);
@@ -439,18 +436,21 @@
       overflow-wrap: break-word;
     }
 
-    .today-cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--primary);
+    .today-title-text { text-underline-offset: 3px; }
+    .today:hover .today-title-text { text-decoration: underline; }
+
+    .today-go {
+      display: inline-block;
+      margin-left: 6px;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: transform 0.15s, color 0.15s;
     }
 
-    .today-cta span { transition: transform 0.15s; }
-    .today:hover .today-cta span { transform: translateX(3px); }
+    .today:hover .today-go {
+      color: var(--text-main);
+      transform: translateX(2px);
+    }
 
     /* 검색 */
     .search {
@@ -656,15 +656,20 @@
       height: 24px;
     }
 
+    /* 별표: 지면이 넓으면 Gmail처럼 행의 왼쪽에 둔다. 다만 열을 새로 내면 번호·제목이 검색창과 다른 세로줄로 밀리므로,
+       지면 왼쪽 여백에 걸어 둔다 (여백에 꽂은 책갈피처럼). 행 배경(-12px)에 바로 붙여, 행에서 별로 손을 옮겨도 끊기지 않는다.
+       첫 줄(행 위 여백 14px + 줄 높이 24px)의 가운데에 맞춘다. 좁은 지면에서는 엄지가 닿는 오른쪽 끝으로 옮긴다 (아래 @container) */
     .star-btn {
-      position: relative;
+      position: absolute;
+      top: 12px;
+      left: -40px;
       z-index: 1;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       width: 28px;
       height: 28px;
-      margin: -2px -6px -2px 0;
+      margin: 0;
       padding: 0;
       border: none;
       border-radius: var(--radius);
@@ -858,14 +863,22 @@
       .search-kbd { display: none; }
     }
 
-    /* 지면이 좁으면 번호와 표시 칸을 한 줄에 두고, 제목은 그 아래 지면 폭을 다 쓴다 */
+    /* 지면이 좁으면 번호·학습 수준·별표를 한 줄에 두고, 제목은 그 아래 지면 폭을 다 쓴다.
+       여백이 좁아 별을 걸어 둘 수 없으니 오른쪽 끝(한 손으로 쥐었을 때 엄지가 닿는 자리)에 둔다 */
     @container (max-width: 560px) {
       .q-row {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto auto;
         grid-template-areas:
-          "num marks"
-          "body body";
-        gap: 0 12px;
+          "num marks star"
+          "body body body";
+        gap: 0 8px;
+      }
+      .star-btn {
+        position: relative;
+        top: auto;
+        left: auto;
+        grid-area: star;
+        margin: -2px -6px -2px 0;
       }
     }
 
@@ -931,8 +944,6 @@
         padding: 28px 20px 16px;
       }
       .doc-header h1 { font-size: 23px; }
-      .today { padding: 16px; }
-      .today-title { font-size: 17px; }
       .q-row::before,
       .q-title::after { inset: 0 -8px; }
     }
@@ -1065,8 +1076,7 @@
 
       <a id="today" class="today q-link" hidden>
         <span class="today-top">
-          <span>오늘의 질문</span>
-          <span id="today-num" class="today-num"></span>
+          <span class="today-label">오늘 받은 질문 · <span id="today-num"></span></span>
           <span id="today-level" class="level-badge" hidden></span>
           <span id="today-memo" class="today-memo" hidden>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1076,8 +1086,7 @@
             메모
           </span>
         </span>
-        <span id="today-title" class="today-title"></span>
-        <span class="today-cta">답변 읽고 정리하기 <span aria-hidden="true">→</span></span>
+        <span class="today-title"><span id="today-title" class="today-title-text"></span><span class="today-go" aria-hidden="true">→</span></span>
       </a>
 
       <label class="search">
@@ -1156,12 +1165,13 @@
       </div>
       <div class="q-marks">
         <span class="level-badge" hidden></span>
-        <button type="button" class="star-btn" data-action="star" aria-pressed="false" aria-label="별표" title="별표">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-          </svg>
-        </button>
       </div>
+      <!-- 별표는 행의 유일한 버튼이라 읽기 전용인 학습 수준 표시와 떼어 둔다. 자리는 CSS가 정한다 (넓으면 왼쪽 여백, 좁으면 오른쪽 끝) -->
+      <button type="button" class="star-btn" data-action="star" aria-pressed="false" aria-label="별표" title="별표">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+      </button>
     </li>
   </template>
 
@@ -1899,7 +1909,7 @@
       updateToday();
     }
 
-    // 오늘의 질문에도 학습 수준과 메모 여부를 같이 보여준다 (미학습이면 표시하지 않는다)
+    // 오늘 받은 질문에도 학습 수준과 메모 여부를 같이 보여준다 (미학습이면 표시하지 않는다)
     function updateToday() {
       const item = store.item(els.today.dataset.id);
       const level = item.level || 'new';
