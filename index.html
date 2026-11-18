@@ -145,7 +145,7 @@
     }
 
     .stat,
-    .star-filter {
+    .scope-filter {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -166,10 +166,10 @@
     }
 
     .stat:hover,
-    .star-filter:hover { background: var(--bg-hover); }
+    .scope-filter:hover { background: var(--bg-hover); }
 
     .stat[aria-pressed="true"],
-    .star-filter[aria-pressed="true"] {
+    .scope-filter[aria-pressed="true"] {
       background: var(--bg-hover);
       color: var(--text-main);
       font-weight: 700;
@@ -182,7 +182,7 @@
     }
 
     .stat-count,
-    .star-count {
+    .scope-count {
       font-size: 13px;
       font-weight: 600;
       color: var(--text-muted);
@@ -190,11 +190,18 @@
     }
 
     .stat[aria-pressed="true"] .stat-count,
-    .star-filter[aria-pressed="true"] .star-count { color: var(--text-main); }
+    .scope-filter[aria-pressed="true"] .scope-count { color: var(--text-main); }
 
-    /* 별표는 학습 수준과 다른 필터라 살짝 띄워 둔다 */
-    .star-filter { margin-top: 8px; }
-    .star-filter svg { color: var(--text-muted); }
+    /* 받은 질문·별표는 학습 수준과 겹쳐 거르는 범위라 살짝 띄워 둔다 */
+    .scopes {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      margin-top: 8px;
+    }
+
+    .scope-filter svg { color: var(--text-muted); }
+    .received-filter[aria-pressed="true"] svg { color: var(--primary); }
     .star-filter[aria-pressed="true"] svg {
       color: var(--star);
       fill: currentColor;
@@ -560,10 +567,32 @@
 
     .q-row:hover::before { background: var(--bg-subtle); }
 
-    /* 필터로 숨긴 행이 있어도 보이는 행 사이에만 구분선을 긋는다. 손을 올린 행의 위아래 선은 감춘다 */
-    .q-row:not([hidden]) ~ .q-row { border-top: 1px solid var(--rule); }
+    /* 행 사이 구분선은 행의 위쪽 선이다. 목록과 구분 제목 바로 아래의 첫 행(is-first, 필터마다 스크립트가 고른다)에는 긋지 않는다.
+       손을 올린 행의 위아래 선은 감춘다 */
+    .q-row { border-top: 1px solid var(--rule); }
+    .q-row.is-first,
     .q-row:hover,
     .q-row:hover + .q-row { border-top-color: transparent; }
+
+    /* 번호순 목록에서 백엔드가 시작하는 자리. 목록 머리(질문 220개)와 같은 크기의 작은 머리말에 굵은 선 하나 */
+    .list-divider {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 36px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--rule-strong);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .list-divider-count {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
 
     .q-num {
       grid-area: num;
@@ -925,7 +954,16 @@
         height: 52px;
       }
       .stat-count { font-size: 15px; font-weight: 700; color: var(--text-main); }
-      .star-filter { width: auto; margin: 0; background: var(--bg-hover); }
+      .scopes {
+        flex-direction: row;
+        gap: 6px;
+        margin: 0;
+      }
+      .scope-filter {
+        width: auto;
+        background: var(--bg-hover);
+      }
+      .scope-filter[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--text-muted); }
       .cat-menu { left: auto; right: 0; }
     }
 
@@ -1019,15 +1057,28 @@
                 <span class="stat-count" data-count="done">-</span>
               </button>
             </div>
-            <button type="button" id="star-filter" class="star-filter" aria-pressed="false">
-              <span class="stat-label">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                </svg>
-                별표
-              </span>
-              <span id="star-count" class="star-count">0</span>
-            </button>
+            <!-- 학습 수준과 겹쳐 거르는 범위: 메일로 받은 질문(받은 순서의 최신순), 별표한 질문 -->
+            <div class="scopes">
+              <button type="button" id="received-filter" class="scope-filter received-filter" aria-pressed="false" title="받은 질문만 최근에 받은 순서로 보기" hidden>
+                <span class="stat-label">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
+                    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
+                  </svg>
+                  받은 질문
+                </span>
+                <span id="received-count" class="scope-count">0</span>
+              </button>
+              <button type="button" id="star-filter" class="scope-filter star-filter" aria-pressed="false">
+                <span class="stat-label">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  </svg>
+                  별표
+                </span>
+                <span id="star-count" class="scope-count">0</span>
+              </button>
+            </div>
           </section>
 
           <section class="side-group" aria-label="카테고리">
@@ -1187,7 +1238,7 @@
     } from './memo-core.js';
 
     const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
-    const FILTER_DEFAULT = { level: 'all', category: '', text: '', starred: false };
+    const FILTER_DEFAULT = { level: 'all', category: '', text: '', starred: false, received: false };
     // 메모 저장소 권한은 GitHub App 설치로 받는다 (설치한 저장소에만 Contents 읽기/쓰기)
     const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/maeil-mail-reborn-memo/installations/new';
     const GITHUB_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>';
@@ -1221,6 +1272,8 @@
       logoutDialog: document.getElementById('logout-dialog'),
       starFilter: document.getElementById('star-filter'),
       starCount: document.getElementById('star-count'),
+      receivedFilter: document.getElementById('received-filter'),
+      receivedCount: document.getElementById('received-count'),
       resultCount: document.getElementById('result-count'),
       filterReset: document.querySelector('.list-head [data-action="filter-reset"]'),
       list: document.getElementById('list'),
@@ -1228,7 +1281,9 @@
       rowTemplate: document.getElementById('row-template'),
     };
 
-    let data = { questions: [], categories: [], today: null };
+    // received: 메일로 받은 질문 ID, 최근에 받은 것부터
+    let data = { questions: [], categories: [], today: null, received: [] };
+    let receivedSet = new Set();
     let repoCache = null;
     const rows = new Map();
     const filter = { ...FILTER_DEFAULT };
@@ -1552,8 +1607,8 @@
 
     // 질문 ID 접두어(fe, be)별 목차 위치. 백엔드 카테고리는 이름 앞에 영역을 붙여 구분한다.
     const AREAS = [
-      { prefix: 'fe', dir: 'frontend', categoryLabel: '' },
-      { prefix: 'be', dir: 'backend', categoryLabel: '백엔드 · ' },
+      { prefix: 'fe', dir: 'frontend', name: '프론트엔드', categoryLabel: '' },
+      { prefix: 'be', dir: 'backend', name: '백엔드', categoryLabel: '백엔드 · ' },
     ];
 
     async function loadArea(area) {
@@ -1562,23 +1617,33 @@
         fetchText(`${area.dir}/toc-category.md`).catch(() => ''),
       ]);
 
+      // 카테고리 필터 값(category)은 영역을 붙여 프론트엔드·백엔드의 같은 이름을 가르고,
+      // 행에는 영역 없이 이름만(categoryName) 쓴다. 행 번호(FE-1, BE-3)가 이미 영역을 말해 준다
       const categoryOf = {};
       const categories = [];
       let current = '';
+      let currentName = '';
       for (const line of categoryToc.split('\n')) {
         const heading = line.match(/^##\s+(.+)/);
         if (heading) {
-          current = area.categoryLabel + heading[1].trim();
+          currentName = heading[1].trim();
+          current = area.categoryLabel + currentName;
           categories.push(current);
           continue;
         }
         const item = line.match(new RegExp(`\\(contents\\/(${area.prefix}-\\d+)\\.md\\)`));
-        if (item && current) categoryOf[item[1]] = current;
+        if (item && current) categoryOf[item[1]] = { category: current, categoryName: currentName };
       }
 
       // send_mail.py와 같은 형식: - [질문](contents/fe-1.md)
       const questions = [...toc.matchAll(new RegExp(`-\\s*\\[(.*?)\\]\\(contents\\/(${area.prefix}-\\d+)\\.md\\)`, 'g'))]
-        .map(([, title, id]) => ({ id, title: title.replace(/\\([!-/:-@[-`{-~])/g, '$1'), category: categoryOf[id] || '' }));
+        .map(([, title, id]) => ({
+          id,
+          area: area.prefix,
+          title: title.replace(/\\([!-/:-@[-`{-~])/g, '$1'),
+          category: categoryOf[id]?.category || '',
+          categoryName: categoryOf[id]?.categoryName || '',
+        }));
 
       return { questions, categories };
     }
@@ -1609,14 +1674,24 @@
       return null;
     }
 
+    // 메일로 받은 질문, 최근에 받은 것부터. 질문은 무작위로 보내므로 번호 순서와 상관이 없다.
+    // sent는 보낸 순서대로 쌓이고, 모든 질문을 다 보내면 비우고 새 바퀴를 센다(send_mail.py의 record_sent).
+    // 오늘 질문은 발송 전에도 '오늘 받은 질문'으로 보여주므로 받은 질문에 넣는다
+    function receivedIds(progress, todayId, known) {
+      const ids = Array.isArray(progress.sent) ? [...progress.sent] : [];
+      if (todayId && !ids.includes(todayId)) ids.push(todayId);
+      return [...new Set(ids.filter((id) => known.has(id)).reverse())];
+    }
+
     async function loadQuestions() {
-      const loaded = await Promise.all(AREAS.map(loadArea));
+      const [loaded, progress] = await Promise.all([Promise.all(AREAS.map(loadArea)), loadProgress()]);
       const questions = loaded.flatMap((area) => area.questions);
       const categories = loaded.flatMap((area) => area.categories);
-      const todayId = todayQuestionId(await loadProgress());
+      const todayId = todayQuestionId(progress);
       const today = questions.find((q) => q.id === todayId) || null;
+      const received = receivedIds(progress, today?.id, new Set(questions.map((q) => q.id)));
 
-      return { questions, categories, today };
+      return { questions, categories, today, received };
     }
 
     // ---------- 렌더링 ----------
@@ -1823,7 +1898,7 @@
       const link = row.querySelector('.q-title');
       link.href = questionUrl(q.id);
       link.textContent = q.title;
-      row.querySelector('.q-cat').textContent = q.category;
+      row.querySelector('.q-cat').textContent = q.categoryName;
       const memo = row.querySelector('.q-memo');
       memo.href = questionUrl(q.id, '#memo');
       memo.setAttribute('aria-label', `${q.id.toUpperCase()} 메모 보기`);
@@ -1845,8 +1920,26 @@
         .slice(0, 160);
     }
 
+    // 번호순 목록에서 영역이 바뀌는 자리(BE-1 앞)에 두는 구분 제목. 받은 순서로 볼 때는 영역이 섞이므로 감춘다
+    const dividers = new Map(); // 영역 접두어 → 구분 제목 li
+    let orderedFor = null; // 지금 행 순서가 어느 보기(번호순 false / 받은 순 true)에 맞춰져 있는지
+
+    function createDivider(area) {
+      const divider = document.createElement('li');
+      divider.className = 'list-divider';
+      divider.hidden = true;
+      const name = document.createElement('span');
+      name.textContent = area.name;
+      const count = document.createElement('span');
+      count.className = 'list-divider-count';
+      divider.append(name, count);
+      return divider;
+    }
+
     function renderAll() {
       rows.clear();
+      dividers.clear();
+      orderedFor = null;
       const fragment = document.createDocumentFragment();
       for (const q of data.questions) {
         const row = createRow(q);
@@ -1854,6 +1947,10 @@
         fragment.append(row);
         updateRow(q.id);
       }
+      for (const area of AREAS.slice(1)) {
+        if (data.questions.some((q) => q.area === area.prefix)) dividers.set(area.prefix, createDivider(area));
+      }
+      fragment.append(...dividers.values());
       const empty = document.createElement('li');
       empty.className = 'empty';
       empty.id = 'empty';
@@ -1928,11 +2025,19 @@
         els.stats.querySelector(`[data-count="${key}"]`).textContent = value;
       }
 
-      const percent = (n) => (counts.all ? (n / counts.all) * 100 : 0);
-      els.progressDone.style.width = `${percent(counts.done)}%`;
-      els.progressReview.style.width = `${percent(counts.review)}%`;
-      els.progressPercent.textContent = `${Math.round(percent(counts.done))}%`;
-      els.progressText.textContent = `${counts.all}개 중 ${counts.done}개 완벽 이해`;
+      // 진도는 메일로 받은 질문 가운데 얼마나 익혔는지로 센다. 아직 받지 않은 질문까지 세면 발송 일정만 보여주게 된다.
+      // (progress.json을 못 읽어 받은 질문을 모르면 전체 질문으로 센다)
+      const base = data.received.length ? data.received : data.questions.map((q) => q.id);
+      const done = base.filter((id) => store.level(id) === 'done').length;
+      const review = base.filter((id) => store.level(id) === 'review').length;
+      const percent = (n) => (base.length ? (n / base.length) * 100 : 0);
+      els.progressDone.style.width = `${percent(done)}%`;
+      els.progressReview.style.width = `${percent(review)}%`;
+      els.progressPercent.textContent = `${Math.round(percent(done))}%`;
+      els.progressText.textContent = data.received.length
+        ? `받은 질문 ${base.length}개 중 ${done}개 완벽 이해`
+        : `${base.length}개 중 ${done}개 완벽 이해`;
+      els.receivedCount.textContent = data.received.length;
       els.starCount.textContent = data.questions.filter((q) => store.item(q.id).starred).length;
     }
 
@@ -2017,15 +2122,36 @@
     // 학습 수준이나 별표를 바꿀 때는 다시 거르지 않는다. 필터 중인 행이 눈앞에서 사라지지 않도록.
     function applyFilter() {
       const matcher = normalize(filter.text) ? searchMatcher(filter.text) : null;
+      const shownIn = {}; // 영역별 보이는 행 수 (구분 제목에 쓴다)
       let shown = 0;
       for (const q of data.questions) {
         const item = store.item(q.id);
         const visible = (filter.level === 'all' || filter.level === (item.level || 'new'))
           && (!filter.starred || item.starred)
+          && (!filter.received || receivedSet.has(q.id))
           && (!filter.category || q.category === filter.category)
           && (!matcher || matcher.test(`${q.id} ${q.title} ${item.memo || ''}`.toLowerCase()));
         rows.get(q.id).hidden = !visible;
-        if (visible) shown++;
+        if (visible) {
+          shown++;
+          shownIn[q.area] = (shownIn[q.area] || 0) + 1;
+        }
+      }
+      orderRows();
+      for (const [area, divider] of dividers) {
+        divider.hidden = filter.received || !shownIn[area];
+        divider.querySelector('.list-divider-count').textContent = `${shownIn[area] || 0}개`;
+      }
+      // 구분선은 행의 위쪽 선이다. 목록이나 구분 제목 바로 아래의 첫 행에는 긋지 않는다
+      let afterRow = false;
+      for (const node of els.list.children) {
+        if (node.hidden) continue;
+        if (node.classList.contains('q-row')) {
+          node.classList.toggle('is-first', !afterRow);
+          afterRow = true;
+        } else {
+          afterRow = false;
+        }
       }
       document.getElementById('empty').hidden = shown > 0;
       els.resultCount.textContent = shown === data.questions.length ? `질문 ${shown}개` : `질문 ${data.questions.length}개 중 ${shown}개`;
@@ -2033,7 +2159,28 @@
       writeStore('sessionStorage', FILTER_KEY, filter);
     }
 
-    const isFiltered = () => Object.keys(FILTER_DEFAULT).some((key) => key === 'text' ? normalize(filter.text) : filter[key] !== FILTER_DEFAULT[key]);
+    // 번호순 보기: 목차 순서대로, 영역이 바뀌는 자리에 구분 제목. 받은 질문 보기: 최근에 받은 질문부터 (나머지는 어차피 숨겨져 있다).
+    // 보기가 바뀔 때만 행을 옮긴다
+    function orderRows() {
+      if (orderedFor === filter.received) return;
+      orderedFor = filter.received;
+      const nodes = [];
+      if (filter.received) {
+        for (const id of data.received) nodes.push(rows.get(id));
+        for (const q of data.questions) if (!receivedSet.has(q.id)) nodes.push(rows.get(q.id));
+        nodes.push(...dividers.values());
+      } else {
+        let area = data.questions[0]?.area;
+        for (const q of data.questions) {
+          if (q.area !== area && dividers.has(q.area)) nodes.push(dividers.get(q.area));
+          area = q.area;
+          nodes.push(rows.get(q.id));
+        }
+      }
+      els.list.append(...nodes, document.getElementById('empty'));
+    }
+
+    const isFiltered = () =>Object.keys(FILTER_DEFAULT).some((key) => key === 'text' ? normalize(filter.text) : filter[key] !== FILTER_DEFAULT[key]);
 
     // 필터 값(filter)을 화면의 필터 버튼·검색창·카테고리에 반영한다
     function syncFilterControls() {
@@ -2043,6 +2190,7 @@
         stat.setAttribute('aria-pressed', String(stat.dataset.filter === filter.level));
       }
       els.starFilter.setAttribute('aria-pressed', String(filter.starred));
+      els.receivedFilter.setAttribute('aria-pressed', String(filter.received));
       renderCategoryMenu();
     }
 
@@ -2054,6 +2202,7 @@
         if (typeof saved.text === 'string') filter.text = saved.text;
         if (['all', 'new', 'review', 'done'].includes(saved.level)) filter.level = saved.level;
         filter.starred = saved.starred === true;
+        filter.received = saved.received === true && data.received.length > 0;
         if ([...els.category.options].some((option) => option.value === saved.category)) filter.category = saved.category;
       }
       syncFilterControls();
@@ -2166,6 +2315,12 @@
         applyFilter();
       });
 
+      els.receivedFilter.addEventListener('click', () => {
+        filter.received = !filter.received;
+        els.receivedFilter.setAttribute('aria-pressed', String(filter.received));
+        applyFilter();
+      });
+
       els.repoOpen.addEventListener('click', openRepoDialog);
 
       els.repoDialog.addEventListener('click', (e) => {
@@ -2252,6 +2407,8 @@
       }
       await dataReady;
 
+      receivedSet = new Set(data.received);
+      els.receivedFilter.hidden = !data.received.length;
       renderCategories();
       // 질문을 보고 돌아왔을 때 보던 검색어와 필터를 되살린다
       restoreFilter();
