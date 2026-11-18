@@ -1627,7 +1627,8 @@
       const messages = {
         unconfigured: '이 브라우저에만 저장돼요 · Firebase를 설정하면 기기 간 동기화가 켜져요',
         unavailable: 'Firebase를 불러오지 못해 이 브라우저에만 저장하고 있어요',
-        guest: '이 브라우저에만 저장돼요 · 로그인하면 다른 기기에서도 이어서 볼 수 있어요',
+        // 동기화는 소유자 계정만 된다(firestore.rules). 다른 방문자에게 로그인하면 이어서 볼 수 있다고 약속하지 않는다
+        guest: '이 브라우저에만 저장돼요',
         user: `${name} 계정에 저장돼요`,
         error: '계정 기록을 불러오지 못했어요 · 마지막으로 불러온 기록을 보여주고, 바꾼 내용은 연결되면 저장해요',
         denied: '이 계정은 기록 동기화가 허용되지 않았어요 · 바꾼 내용은 이 기기에만 보관돼요',
@@ -1640,9 +1641,10 @@
 
       els.account.replaceChildren();
       if (mode === 'guest') {
+        // 소유자가 기기마다 한 번 누르면 끝나는 버튼이라, 페이지에서 가장 진한 색(채운 초록)을 쓰지 않는다
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'btn btn-primary';
+        button.className = 'btn';
         button.innerHTML = `${GITHUB_ICON}<span>GitHub로 로그인</span>`;
         button.addEventListener('click', login);
         els.account.append(button);
