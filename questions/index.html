@@ -100,31 +100,34 @@
       overflow-wrap: break-word;
     }
 
-    /* 지금 학습 상태: 누르면 학습 기록으로 내려간다 */
+    /* 지금 학습 상태: 기록한 것이 있을 때만 보인다(미학습이면 질문 목록처럼 표시하지 않는다). 누르면 학습 기록으로 내려간다.
+       학습 수준은 색이 뜻이라 색칠한 표시로, 메모는 질문 목록의 메모 줄처럼 면 없는 글자 링크로 둔다 */
     .doc-status {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      align-items: center;
+      gap: 6px 12px;
       margin-top: 16px;
     }
 
-    .status-chip {
+    .doc-status .level-badge { transition: box-shadow 0.15s; }
+    .doc-status .level-badge:hover { box-shadow: inset 0 0 0 1px currentColor; }
+
+    .status-memo {
       display: inline-flex;
       align-items: center;
       gap: 5px;
       height: 24px;
-      padding: 0 8px;
-      border-radius: var(--radius);
-      background: var(--bg-subtle);
       color: var(--text-muted);
       font-size: 12.5px;
       font-weight: 600;
       text-decoration: none;
+      text-underline-offset: 3px;
       white-space: nowrap;
     }
 
-    .doc-status a { transition: box-shadow 0.15s; }
-    .doc-status a:hover { box-shadow: inset 0 0 0 1px currentColor; }
+    .status-memo svg { color: var(--primary); }
+    .status-memo:hover { color: var(--text-main); text-decoration: underline; }
 
     /* ---------- 본문 마크다운 타이포그래피 ---------- */
     #content {
@@ -274,8 +277,10 @@
 
     .code-copy-btn.copied { color: var(--primary); }
 
+    /* 터치 화면에서는 복사 버튼이 늘 보이므로, 코드 첫 줄을 가리지 않게 위쪽에 버튼 자리를 띄운다 */
     @media (hover: none) {
       .code-copy-btn { opacity: 1; }
+      #content .code-wrapper pre { padding-top: 38px; }
     }
 
     #content a {
@@ -295,12 +300,14 @@
     .study,
     .study-block { scroll-margin-top: calc(var(--nav-height) + 16px); }
 
+    /* 무엇을 하라는 설명은 빈 메모 칸의 안내 문구가 대신한다 (같은 말을 두 번 하지 않는다) */
     .study-head {
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
       gap: 4px 16px;
+      margin-bottom: 24px;
     }
 
     .study-title {
@@ -324,13 +331,6 @@
 
     .study-sync .sync-dot { margin-right: -2px; }
     .study-sync[data-state="error"] .memo-account { color: var(--danger); }
-
-    .study-desc {
-      margin: 4px 0 28px;
-      font-size: 13.5px;
-      color: var(--text-muted);
-      word-break: keep-all;
-    }
 
     .study-block + .study-block { margin-top: 32px; }
 
@@ -554,7 +554,7 @@
         </h1>
         <div id="doc-status" class="doc-status" hidden>
           <a id="status-level" class="level-badge" href="#study" title="학습 기록으로 이동"></a>
-          <a id="status-memo" class="status-chip" href="#memo" title="내 메모로 이동" hidden>
+          <a id="status-memo" class="status-memo" href="#memo" title="내 메모로 이동" hidden>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 20h9"></path>
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
@@ -584,7 +584,6 @@
             <span id="memo-save-state" class="save-state" role="status"></span>
           </p>
         </div>
-        <p class="study-desc">답변을 읽었다면 지금 이해한 만큼 표시하고, 내 언어로 정리해 두세요.</p>
 
         <div class="study-block">
           <div class="study-block-head">
@@ -968,13 +967,15 @@
       showToast(starred ? '별표했어요. 질문 목록에서 별표만 모아 볼 수 있어요.' : '별표를 해제했어요.');
     }
 
-    // 제목 아래: 지금 이해도와 메모가 있는지. 누르면 학습 기록으로 내려간다
+    // 제목 아래: 지금 이해도와 메모가 있는지. 누르면 학습 기록으로 내려간다.
+    // 처음 여는 질문은 거의 다 미학습이라 그때는 아무것도 보이지 않는다 (질문 목록과 같다)
     function renderStatus() {
       const level = store.level(question.id);
       els.statusLevel.dataset.level = level;
       els.statusLevel.textContent = LEVEL_LABELS[level];
+      els.statusLevel.hidden = level === 'new';
       els.statusMemo.hidden = !item().memo;
-      els.docStatus.hidden = false;
+      els.docStatus.hidden = els.statusLevel.hidden && els.statusMemo.hidden;
     }
 
     // ---------- 메모 초안: 저장하지 않고 떠나도 이 기기에 남겨 두었다가 이어 쓴다 ----------
@@ -1047,18 +1048,16 @@
       return box;
     }
 
+    // 메모가 없으면 빈 글쓰기 칸처럼 보이는 버튼 하나를 둔다. 누르면 같은 자리에 같은 테두리의 편집기가 열린다
     function emptyMemo() {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'memo-empty';
       button.dataset.action = 'memo-write';
+      button.setAttribute('aria-label', '메모 쓰기');
       button.innerHTML = `
-        <span class="memo-empty-title">아직 메모가 없어요</span>
-        <span>핵심을 한 문장으로, 헷갈렸던 점과 나만의 예시까지 내 언어로 정리해보세요.<br>마크다운으로 쓸 수 있어요.</span>
-        <span class="memo-empty-cta">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          메모 작성
-        </span>`;
+        <span class="memo-empty-text">핵심을 한 문장으로, 헷갈렸던 점과 나만의 예시까지 내 언어로 정리해 보세요</span>
+        <span class="memo-empty-hint">마크다운으로 쓸 수 있어요</span>`;
       return button;
     }
 

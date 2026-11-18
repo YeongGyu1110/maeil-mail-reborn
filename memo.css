@@ -121,51 +121,38 @@
   text-underline-offset: 3px;
 }
 
-/* ---------- 메모가 없을 때: 쓰기를 권하는 빈 칸 하나 (칸 전체가 버튼) ---------- */
+/* ---------- 메모가 없을 때: 빈 글쓰기 칸 (칸 전체가 버튼) ----------
+   GitHub 댓글 칸처럼 아직 아무것도 쓰지 않은 입력칸으로 보인다. 누르면 같은 자리에 같은 테두리·글자 크기의 편집기가 열려
+   칸이 그대로 살아나는 것처럼 이어진다. 채운 버튼을 두지 않는다: 메모는 본문(답변)보다 앞서 눈길을 끌 이유가 없다 */
 .memo-empty {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
   width: 100%;
-  padding: 32px 20px;
-  border: 1px dashed var(--rule-strong);
+  min-height: 116px;
+  padding: 16px 18px 12px;
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
-  background: transparent;
+  background: var(--bg-paper);
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 13.5px;
-  line-height: 1.6;
-  text-align: center;
-  word-break: keep-all;
-  cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
-}
-
-.memo-empty:hover {
-  border-color: var(--primary);
-  background: var(--primary-light);
-  color: var(--text-sub);
-}
-
-.memo-empty-title {
   font-size: 15px;
-  font-weight: 700;
-  color: var(--text-main);
+  line-height: 1.75;
+  text-align: left;
+  word-break: keep-all;
+  cursor: text;
+  transition: border-color 0.15s;
 }
 
-.memo-empty-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.memo-empty:hover { border-color: var(--text-muted); }
+
+.memo-empty-text { flex: 1; }
+
+.memo-empty-hint {
+  align-self: flex-end;
   margin-top: 10px;
-  padding: 0 12px;
-  height: 32px;
-  border-radius: var(--radius);
-  background: var(--primary);
-  color: var(--primary-ink);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ---------- 저장하지 않은 초안 알림 ---------- */
