@@ -1277,12 +1277,14 @@
       (item().memo ? els.memoEdit : els.memoBody.querySelector('.memo-empty'))?.focus({ preventScroll: true });
     }
 
+    // 메모 지우기: 작성 칸을 비운 채 저장하면 묻는다 (따로 삭제 버튼은 없다).
+    // GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다
     async function remove() {
       if (!editor || saving) return;
       const yes = await confirmDialog({
         title: '메모를 삭제할까요?',
-        body: memoCommitNote(question.id)
-          ? '이 질문의 메모가 지워져요. GitHub에 올린 파일은 그대로 남아요.'
+        body: canCommitMemo()
+          ? `이 질문의 메모가 지워지고, ${store.memoRepo.fullName}의 ${question.id}.md 파일도 삭제돼요. 지난 커밋 기록은 GitHub에 남아요.`
           : '이 질문의 메모가 지워지고 되돌릴 수 없어요.',
         yes: '삭제',
         no: '취소',

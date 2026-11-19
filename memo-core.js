@@ -492,6 +492,33 @@ async function commitMemo(token, id, text, title) {
   }
 }
 
+// 메모를 지우면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다 (잔디도 그대로).
+// 파일이 없으면(임시저장만 하고 올린 적 없는 메모) 할 일이 없으므로 false를 돌려준다
+async function deleteMemoFile(token, id, title) {
+  const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
+
+  for (let attempt = 0; ; attempt++) {
+    let sha;
+    try {
+      ({ sha } = await githubApi(token, path));
+    } catch (err) {
+      if (err.status === 404) return false;
+      throw err;
+    }
+
+    try {
+      await githubApi(token, path, {
+        method: 'DELETE',
+        body: { message: `메모 삭제: ${id.toUpperCase()} ${title}`.trim(), sha },
+      });
+      return true;
+    } catch (err) {
+      // 다른 기기에서 그사이 커밋해 sha가 바뀌었으면 한 번 더 시도한다
+      if (err.status !== 409 || attempt > 0) throw err;
+    }
+  }
+}
+
 function githubErrorMessage(err) {
   if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
   if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
@@ -635,7 +662,7 @@ export function memoCommitNote(id) {
   return `저장하면 ${store.memoRepo.fullName}의 ${id}.md로 커밋돼요`;
 }
 
-// 메모를 저장한다. 빈 글이면 메모를 지운다 (GitHub 파일은 학습 기록으로 그대로 둔다).
+// 메모를 저장한다. 빈 글이면 메모를 지우고, GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다.
 // commit이 false면 임시저장이다: 계정(또는 이 브라우저)에만 쓰고 GitHub에는 올리지 않으며, 알림도 띄우지 않는다
 // (습관처럼 자주 누르는 Ctrl+S라 화면이 시끄럽지 않게, 결과는 편집기가 보여준다). 커밋할 수 있는 계정이면 올리지 않았다고 표시해 둔다.
 // GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후 await 없이 불러야 한다.
@@ -646,6 +673,7 @@ export async function saveMemo(id, rawText, { title = '', commit = true } = {}) 
   const changed = text !== (store.item(id).memo || '');
   const committable = Boolean(text) && canCommit();
   const shouldCommit = commit && committable && (changed || isUncommitted(id));
+  const shouldRemoveFile = commit && !text && changed && canCommit();
   if (!changed && !shouldCommit) return { saved: true, changed: false, committed: null };
 
   if (changed) {
@@ -655,11 +683,11 @@ export async function saveMemo(id, rawText, { title = '', commit = true } = {}) 
     hooks.renderSaveState('pending');
   }
 
-  // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
-  const [saved, committed] = await Promise.allSettled([
-    changed ? store.flush() : Promise.resolve(),
-    shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text, title)) : Promise.resolve(),
-  ]);
+  // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋(또는 파일 삭제)을 함께 시작한다
+  let github = Promise.resolve();
+  if (shouldCommit) github = getGithubToken().then((token) => commitMemo(token, id, text, title));
+  else if (shouldRemoveFile) github = getGithubToken().then((token) => deleteMemoFile(token, id, title));
+  const [saved, committed] = await Promise.allSettled([changed ? store.flush() : Promise.resolve(), github]);
 
   // 커밋 결과를 계정에 남긴다 (바뀔 때만 쓴다)
   let flagged = Promise.resolve();
@@ -679,19 +707,23 @@ export async function saveMemo(id, rawText, { title = '', commit = true } = {}) 
     handleSaveError(saved.status === 'rejected' ? saved.reason : flagResult.reason);
   } else if (committed.status === 'rejected') {
     console.error(committed.reason);
-    hooks.toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
+    // 지운 메모는 다시 올릴 자리가 없으므로, GitHub 파일을 못 지우면 알리기만 한다 (저장소에 옛 내용이 남는다)
+    hooks.toast(shouldRemoveFile
+      ? `메모는 지웠지만 GitHub의 ${id}.md 파일을 지우지 못했어요. ${githubErrorMessage(committed.reason)}`
+      : `메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
   } else {
     resetSaveErrors();
     if (commit) {
-      hooks.toast(shouldCommit
-        ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
-        : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
+      let message = text ? '메모를 저장했어요.' : '메모를 지웠어요.';
+      if (shouldCommit) message = `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`;
+      else if (shouldRemoveFile && committed.value) message = `메모를 지우고 ${store.memoRepo.fullName}의 ${id}.md 파일도 삭제했어요.`;
+      hooks.toast(message);
     }
   }
 
   return {
     saved: saved.status === 'fulfilled',
     changed,
-    committed: shouldCommit ? committed.status === 'fulfilled' : null,
+    committed: shouldCommit || shouldRemoveFile ? committed.status === 'fulfilled' : null,
   };
 }
