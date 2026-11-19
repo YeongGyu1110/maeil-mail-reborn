@@ -504,6 +504,16 @@
 .memo-count { font-variant-numeric: tabular-nums; }
 .memo-count[data-level="near"] { color: var(--review); font-weight: 600; }
 .memo-count[data-level="full"] { color: var(--danger); font-weight: 600; }
+
+/* 제한을 넘겨 넣지 못했을 때 글자 수 표시를 살짝 흔든다 */
+.memo-count { display: inline-block; }
+.memo-count.is-bump { animation: memo-count-bump 0.32s ease-out; }
+
+@keyframes memo-count-bump {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
 .memo-draft-state { color: var(--text-muted); }
 
 .memo-editor-buttons {

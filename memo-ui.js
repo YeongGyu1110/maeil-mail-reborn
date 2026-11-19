@@ -206,7 +206,7 @@ export function createMemoEditor({
       <div class="memo-editor-info">
         <span class="memo-count"></span>
         <span class="memo-draft-state"></span>
-        <span class="memo-hint">${MOD}+Enter로 저장 · Esc로 취소</span>
+        <span class="memo-hint">Tab 들여쓰기 · ${MOD}+Enter로 저장 · Esc로 취소</span>
       </div>
       <div class="memo-editor-buttons">
         <button type="button" class="btn btn-sm memo-delete" data-action="delete" title="메모 삭제">${TRASH}<span>삭제</span></button>
@@ -239,6 +239,7 @@ export function createMemoEditor({
   let previewRun = 0;
   let busy = false;
   let shiftEnter = false;
+  let pendingTab = null; // 한글 조합 중에 누른 Tab (true면 Shift+Tab)
 
   const mode = () => (preferred === 'split' && !wide ? 'write' : preferred);
 
@@ -353,11 +354,20 @@ export function createMemoEditor({
 
   // ----- 글 고치기: 되돌리기(Ctrl+Z)가 되도록 브라우저 입력 명령으로 바꾼다 -----
 
+  // 글자 수 제한(maxLength)은 직접 입력할 때만 브라우저가 막는다. 편집기가 넣는 글(Tab, 서식, 목록 이어 쓰기)도
+  // 제한을 넘기면 넣지 않고 글자 수 표시를 살짝 흔들어 알린다. 고친 글을 넣었으면 true
   function replaceRange(start, end, replacement, selStart, selEnd = selStart) {
     input.focus();
     if (start === end && !replacement) {
       input.setSelectionRange(selStart, selEnd);
-      return;
+      return true;
+    }
+    const nextLength = input.value.length - (end - start) + replacement.length;
+    if (nextLength > MEMO_MAX && nextLength > input.value.length) { // 이미 넘친 글을 줄이는 고침은 막지 않는다
+      count.classList.remove('is-bump');
+      void count.offsetWidth; // 연달아 눌러도 다시 흔들리게 한다
+      count.classList.add('is-bump');
+      return false;
     }
     input.setSelectionRange(start, end);
     const done = replacement
@@ -368,6 +378,7 @@ export function createMemoEditor({
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
     input.setSelectionRange(selStart, selEnd);
+    return true;
   }
 
   // 선택한 글자를 기호로 감싼다. 이미 감싸져 있으면 벗긴다
@@ -440,6 +451,115 @@ export function createMemoEditor({
     replaceRange(s, e, block, innerStart, innerStart + selected.length);
   }
 
+  // ----- Tab 들여쓰기 · Shift+Tab 내어쓰기 -----
+  // 마크다운의 하위 목록은 위 항목의 글이 시작하는 자리까지 들여써야 한다 ("- a" 밑은 2칸, "1. a" 밑은 3칸, " - a" 밑은 3칸).
+  // 칸 수를 고정하면 번호 목록에서 하위 목록이 되지 않으므로, 목록 줄은 위 항목에 맞춰 들여쓴다. 그 밖의 줄은 2칸씩
+
+  const INDENT_UNIT = 2;
+  const LIST_LINE = /^([ \t]*)([-*+]|\d{1,9}[.)])( +|$)/;
+
+  // 줄의 들여쓰기 폭(탭은 4칸으로 센다)과, 목록 줄이면 그 항목의 글이 시작하는 자리
+  function lineInfo(line) {
+    const lead = line.match(/^[ \t]*/)[0];
+    const indent = lead.replace(/\t/g, '    ').length;
+    const list = line.match(LIST_LINE);
+    const content = list ? indent + list[2].length + Math.min(Math.max(list[3].length, 1), 4) : null;
+    return { lead: lead.length, indent, content };
+  }
+
+  // 목록 줄 하나를 들여쓰거나(바로 위 같은 수준 항목의 하위로) 내어쓸(한 수준 위로) 들여쓰기 폭
+  function listTarget(lines, index, outdent) {
+    const current = lineInfo(lines[index]);
+    for (let i = index - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      if (/^\s*(#{1,6}\s|```|~~~)/.test(line)) break; // 제목이나 코드 블록을 넘어서는 찾지 않는다
+      const info = lineInfo(line);
+      if (info.content === null) continue; // 목록 항목에 이어 쓴 줄은 건너뛴다
+      if (outdent) {
+        if (info.indent < current.indent) return info.indent;
+      } else if (info.indent === current.indent) {
+        return info.content;
+      } else if (info.indent < current.indent) {
+        break;
+      }
+    }
+    // 위에 기준이 될 항목이 없으면 2칸씩 옮긴다
+    return outdent ? Math.max(0, current.indent - INDENT_UNIT) : current.indent + INDENT_UNIT;
+  }
+
+  // Tab과 Shift+Tab은 언제나 줄 단위로 움직여, Shift+Tab이 방금 누른 Tab을 그대로 되돌린다.
+  // 커서가 줄 어디에 있든 줄 맨 앞의 들여쓰기만 바꾸고, 목록 항목이면 그 아래 하위 항목도 함께 옮긴다
+  function indentLines(outdent) {
+    if (mode() === 'preview') return;
+    const { selectionStart: s, selectionEnd: e, value } = input;
+    const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+    const endAt = e > s && value[e - 1] === '\n' ? e - 1 : e;
+    const lineEndIndex = value.indexOf('\n', endAt);
+    const selectedEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+
+    // 글 전체에서 줄을 나눠, 위쪽 목록 항목도 보고 들여쓰기 폭을 정한다
+    const allLines = value.split('\n');
+    const firstLine = value.slice(0, lineStart).split('\n').length - 1;
+    const selected = value.slice(lineStart, selectedEnd).split('\n');
+    let lead = selected.findIndex((line) => line.trim());
+    // 빈 줄 하나(공백만 있는 줄 포함)에서 누르면 그 줄의 들여쓰기를 바꾼다 (코드 블록에서 새 줄을 들여쓰고 쓸 때)
+    if (lead === -1 && selected.length === 1) lead = 0;
+    if (lead === -1) return;
+    const leadInfo = lineInfo(selected[lead]);
+    const isList = leadInfo.content !== null;
+    const target = isList
+      ? listTarget(allLines, firstLine + lead, outdent)
+      : outdent ? Math.max(0, leadInfo.indent - INDENT_UNIT) : leadInfo.indent + INDENT_UNIT;
+    // 여러 줄은 첫 줄과 같은 폭만큼 함께 옮겨, 줄 사이의 들여쓰기 관계를 지킨다
+    const delta = target - leadInfo.indent;
+    if (!delta) return;
+
+    // 목록 항목이면 바로 아래에 더 깊이 들여쓴 줄(하위 항목, 항목 안의 코드 등)까지 함께 옮긴다. 사이의 빈 줄도 포함한다
+    let lastLine = firstLine + selected.length - 1;
+    if (isList) {
+      for (let i = lastLine + 1; i < allLines.length; i++) {
+        if (!allLines[i].trim()) continue;
+        if (lineInfo(allLines[i]).indent <= leadInfo.indent) break;
+        lastLine = i;
+      }
+    }
+    const lines = allLines.slice(firstLine, lastLine + 1);
+    const lineEnd = lineStart + lines.join('\n').length;
+    const only = lines.length === 1;
+    // 이어 쓰기로 붙여 준 빈 항목을 들여쓰거나 내어써도, Enter로 목록을 끝낼 수 있는 항목으로 계속 기억한다
+    const movingAutoItem = autoItem && autoItem.start === lineStart && lines[0] === autoItem.text;
+
+    const changes = lines.map((line) => {
+      if (!line.trim() && !only) return { line, oldLead: 0, newLead: 0 };
+      const info = lineInfo(line);
+      const newLead = Math.max(0, info.indent + delta);
+      return { line: ' '.repeat(newLead) + line.slice(info.lead), oldLead: info.lead, newLead };
+    });
+    const next = changes.map((change) => change.line).join('\n');
+
+    // 커서와 선택이 글자와 함께 움직이게 옮긴다. 줄 맨 앞에서 시작한 여러 줄 선택은 줄 맨 앞에 둔다
+    const mapPosition = (position, keepLineStart) => {
+      let offset = lineStart;
+      for (let i = 0; i < lines.length; i++) {
+        const lineLength = lines[i].length;
+        if (position <= offset + lineLength || i === lines.length - 1) {
+          const column = position - offset;
+          const { oldLead, newLead } = changes[i];
+          const before = changes.slice(0, i).reduce((sum, change) => sum + change.line.length + 1, 0);
+          if (keepLineStart && column === 0) return lineStart + before;
+          const newColumn = column >= oldLead ? column - oldLead + newLead : Math.min(column, newLead);
+          return lineStart + before + newColumn;
+        }
+        offset += lineLength + 1;
+      }
+      return position;
+    };
+    const keep = s !== e;
+    const done = replaceRange(lineStart, lineEnd, next, mapPosition(s, keep), s === e ? mapPosition(s, false) : mapPosition(e, false));
+    if (done && movingAutoItem) autoItem = { start: lineStart, text: changes[0].line };
+  }
+
   function applyFormat(name) {
     if (mode() === 'preview') return;
     if (name === 'bold') wrap('**', '**', '굵은 글씨');
@@ -449,8 +569,12 @@ export function createMemoEditor({
     else prefixLines(name);
   }
 
-  // 목록 안에서 Enter를 누르면 다음 항목 기호를 붙여 준다. 빈 항목에서 누르면 목록을 끝낸다.
+  // 목록 안에서 Enter를 누르면 다음 항목 기호를 붙여 준다.
+  // 그렇게 붙여 준 빈 항목에서 한 번 더 누르면, 하위 항목이면 한 수준 밖으로 꺼내고 맨 바깥이면 목록을 끝낸다 (기호를 지운다).
+  // 직접 입력한 기호("- ")는 지우지 않고 그냥 줄을 바꾼다.
   // 한글 입력 중에 누른 Enter도 글자가 확정된 뒤에 오는 beforeinput에서 처리한다
+  let autoItem = null; // 이어 쓰기로 붙여 준 빈 항목 { start: 줄 시작 위치, text: 들여쓰기 + 기호 }
+
   function continueList(e) {
     if (e.inputType !== 'insertLineBreak' || shiftEnter) return;
     const { selectionStart: s, selectionEnd: end, value } = input;
@@ -462,16 +586,27 @@ export function createMemoEditor({
     const lineEndIndex = value.indexOf('\n', s);
     const after = value.slice(s, lineEndIndex === -1 ? value.length : lineEndIndex);
 
-    e.preventDefault();
     if (!before.slice(match[0].length).trim() && !after.trim()) {
+      const auto = autoItem && autoItem.start === lineStart && before === autoItem.text;
+      if (!auto) {
+        autoItem = null;
+        return; // 직접 입력한 빈 항목: 브라우저가 줄만 바꾼다
+      }
+      e.preventDefault();
+      if (match[1]) {
+        indentLines(true); // 하위의 빈 항목: 한 수준 밖으로 (빈 항목으로 계속 기억된다)
+        return;
+      }
+      autoItem = null;
       replaceRange(lineStart, s, '', lineStart);
       return;
     }
+    e.preventDefault();
     let marker = match[2];
     if (match[3]) marker = `${Number(match[3]) + 1}${match[4]} `;
     else if (/\[[ xX]\]/.test(marker)) marker = marker.replace(/\[[ xX]\]/, '[ ]');
     const insert = `\n${match[1]}${marker}`;
-    replaceRange(s, s, insert, s + insert.length);
+    if (replaceRange(s, s, insert, s + insert.length)) autoItem = { start: s + 1, text: match[1] + marker };
   }
 
   // ----- 이벤트 -----
@@ -492,6 +627,15 @@ export function createMemoEditor({
   input.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
     if (e.key === 'Enter') shiftEnter = e.shiftKey;
+    // Tab은 다음 버튼으로 넘어가지 않고 들여쓴다 (작성 칸을 떠날 때는 Ctrl+Enter 저장, Esc 취소).
+    // 한글 조합 중에 누른 Tab은 조합이 끝나 글자가 확정된 뒤에 들여쓴다 (조합 중에는 key가 'Process'라 code로 본다)
+    if ((e.key === 'Tab' || e.code === 'Tab') && !mod && !e.altKey) {
+      e.preventDefault();
+      if (busy) return;
+      if (e.isComposing || e.keyCode === 229) pendingTab = e.shiftKey;
+      else indentLines(e.shiftKey);
+      return;
+    }
     if (e.isComposing || e.keyCode === 229) return; // 한글 조합 중인 키는 입력기에 맡긴다
     if (e.key === 'Enter' && mod) {
       e.preventDefault();
@@ -521,6 +665,13 @@ export function createMemoEditor({
   });
 
   input.addEventListener('beforeinput', continueList);
+
+  input.addEventListener('compositionend', () => {
+    if (pendingTab === null) return;
+    const outdent = pendingTab;
+    pendingTab = null;
+    setTimeout(() => indentLines(outdent));
+  });
 
   input.addEventListener('input', () => {
     autosize();
