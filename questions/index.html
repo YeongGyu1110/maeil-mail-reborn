@@ -38,6 +38,8 @@
   <link rel="icon" href="../favicon.png" type="image/png">
   <link rel="stylesheet" href="../base.css">
   <link rel="stylesheet" href="../memo.css">
+  <!-- 배포 직후 캐시가 섞여 학습 기록 모듈이 멈추면 한 번 새로 받아 고친다 -->
+  <script defer src="../module-guard.js"></script>
 
   <style>
     /* 질문 화면: 답변을 읽고(본문) → 이해도를 표시하고 → 내 언어로 정리하는(학습 기록) 한 장의 문서 */
@@ -822,6 +824,9 @@
       uncommitted, memoCommitNote, saveMemo, normalizeMemo,
     } from '../memo-core.js';
     import { createMemoView, createMemoEditor } from '../memo-ui.js';
+
+    // 가져오기가 모두 성공해 이 모듈이 실행되기 시작했다는 표시 (../module-guard.js가 본다)
+    window.maeilModuleReady = true;
 
     const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
     const DRAFT_DELAY = 500;

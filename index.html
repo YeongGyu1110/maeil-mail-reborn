@@ -25,6 +25,8 @@
 
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="stylesheet" href="base.css">
+  <!-- 배포 직후 캐시가 섞여 페이지 모듈이 멈추면 한 번 새로 받아 고친다 -->
+  <script defer src="module-guard.js"></script>
 
   <style>
     /* 질문 목록: 질문을 찾아 고르는 화면. 답변 읽기·학습 수준 기록·메모는 질문 화면(questions/)에서 한다 */
@@ -1248,6 +1250,9 @@
       saveErrorShown, flushInBackground, saveSoon,
       fb, firebaseConfigured, loadFirebase, githubTokenKey, rememberGithubToken, connectGithub, githubApi,
     } from './memo-core.js';
+
+    // 가져오기가 모두 성공해 이 모듈이 실행되기 시작했다는 표시 (module-guard.js가 본다)
+    window.maeilModuleReady = true;
 
     const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
     const FILTER_DEFAULT = { level: 'all', category: '', text: '', starred: false, received: false };
