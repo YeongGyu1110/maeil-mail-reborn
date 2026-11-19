@@ -407,6 +407,12 @@
   color: var(--text-main);
 }
 
+/* 도구 모음 버튼의 포커스 테두리는 버튼 안쪽에 그린다.
+   서식 버튼 줄은 좁을 때 가로로 넘겨 보느라(overflow) 버튼 밖으로 나간 테두리가 잘리고,
+   보기 전환 버튼도 이해도 선택처럼 칸 안에 그려야 한 도구 모음 안에서 모양이 같다 */
+.memo-mode:focus-visible,
+.memo-format-btn:focus-visible { outline-offset: -2px; }
+
 .memo-format-sep {
   flex-shrink: 0;
   width: 1px;
