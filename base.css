@@ -104,6 +104,10 @@
 /* 내용 길이에 따라 스크롤바가 생기거나 사라져도 화면이 옆으로 밀리지 않게 자리를 비워 둔다 */
 html { scrollbar-gutter: stable; }
 
+/* 확인 창 같은 창(dialog)을 띄운 동안에는 뒤 페이지가 화살표·휠·터치로 스크롤되지 않게 한다.
+   스크롤바 자리는 위에서 비워 두었으므로 막아도 화면이 옆으로 밀리지 않는다 */
+html:has(dialog[open]) { overflow: hidden; }
+
 /* 스크롤바: 화살표 없이 얇고 각진 막대만 남긴다 */
 ::-webkit-scrollbar {
   width: 10px;

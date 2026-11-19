@@ -1310,6 +1310,21 @@
 
     // ---------- 확인 창 ----------
 
+    // 확인 창의 버튼 사이를 화살표로도 오간다 (운영체제의 확인 창처럼). 왼쪽·위는 앞 버튼, 오른쪽·아래는 다음 버튼
+    function bindDialogArrowKeys(dialog) {
+      dialog.addEventListener('keydown', (e) => {
+        const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+        if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const buttons = [...dialog.querySelectorAll('.confirm-buttons button')];
+        const index = buttons.indexOf(document.activeElement);
+        if (index === -1) return;
+        e.preventDefault();
+        buttons[(index + step + buttons.length) % buttons.length].focus();
+      });
+    }
+
+    bindDialogArrowKeys(els.confirm);
+
     function confirmDialog({ title, body, yes, no }) {
       const dialog = els.confirm;
       dialog.querySelector('#confirm-title').textContent = title;

@@ -1427,6 +1427,17 @@
       }
     });
 
+    // 확인 창의 버튼 사이를 화살표로도 오간다 (질문 화면의 확인 창과 같다). 왼쪽·위는 앞 버튼, 오른쪽·아래는 다음 버튼
+    els.logoutDialog.addEventListener('keydown', (e) => {
+      const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+      if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const buttons = [...els.logoutDialog.querySelectorAll('.confirm-buttons button')];
+      const index = buttons.indexOf(document.activeElement);
+      if (index === -1) return;
+      e.preventDefault();
+      buttons[(index + step + buttons.length) % buttons.length].focus();
+    });
+
     // ---------- GitHub ----------
 
     // 앱을 설치한 저장소 중 잔디가 심어지는 것만 보여준다: 포크·보관 저장소 제외
