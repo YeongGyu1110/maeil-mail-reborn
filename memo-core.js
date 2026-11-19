@@ -6,6 +6,9 @@ import { firebaseConfig } from './firebase-config.js';
 
 const FIREBASE_VERSION = '10.14.1';
 export const MEMO_MAX = 3000;
+// 저장할 메모의 모양: 앞의 빈 줄과 끝의 공백만 걷어 낸다. 첫 줄의 들여쓰기(" - 항목", 들여쓴 코드)는 글의 일부라 남긴다.
+// 저장된 메모와 편집 중인 글을 비교할 때도 이 모양으로 맞춘다
+export const normalizeMemo = (text) => text.replace(/^(?:[ \t]*\n)+/, '').trimEnd();
 // 메모는 기본 문서와 따로 묶음 문서 4개(users/{uid}/memos/0~3)에 나눠 담는다. 개수를 바꾸면 firestore.rules도 같이 바꾼다
 const MEMO_SHARDS = 4;
 const MEMO_FIELDS = ['memo', 'memoAt'];
@@ -347,7 +350,8 @@ export const SAVE_STATE_TEXT = {
 const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
 
 function saveErrorMessage(err) {
-  if (err?.code === 'storage-full') return '브라우저 저장 공간이 부족해 저장하지 못했어요. 로그인하면 계정에 저장할 수 있어요.';
+  // 동기화는 소유자 계정만 되므로(firestore.rules) 로그인하라고 권하지 않는다
+  if (err?.code === 'storage-full') return '브라우저 저장 공간이 부족해 저장하지 못했어요. 브라우저의 사이트 데이터를 정리한 뒤 다시 저장해주세요.';
   if (!store.pendingKept) return '저장하지 못했고, 브라우저 저장 공간이 부족해 이 기기에도 보관하지 못했어요. 저장될 때까지 페이지를 닫지 말아주세요.';
   if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
   if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
@@ -633,7 +637,7 @@ export function memoCommitNote(id) {
 // title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지다.
 // 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
 export async function saveMemo(id, rawText, { title = '' } = {}) {
-  const text = rawText.trim();
+  const text = normalizeMemo(rawText);
   const changed = text !== (store.item(id).memo || '');
   const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
   if (!changed && !shouldCommit) return { saved: true, changed: false };
