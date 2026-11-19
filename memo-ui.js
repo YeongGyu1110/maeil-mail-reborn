@@ -260,9 +260,11 @@ export function createMemoEditor({
     for (const button of toolbar.querySelectorAll('button')) button.tabIndex = button === toolbarCurrent ? 0 : -1;
   }
 
+  // 브라우저는 Alt·Ctrl을 함께 누른 단축키를 키보드 이동으로 치지 않아, 마우스로 작성 칸을 눌렀다면
+  // 그냥 focus()로 옮긴 버튼에는 포커스 테두리를 그리지 않는다. 키보드로 옮긴 것이니 테두리를 보이라고 알려준다
   function focusToolbar() {
     updateToolbarStop();
-    toolbarCurrent?.focus();
+    toolbarCurrent?.focus({ focusVisible: true });
   }
 
   toolbar.addEventListener('focusin', (e) => {
@@ -316,7 +318,8 @@ export function createMemoEditor({
 
   // ----- 보기 전환 -----
 
-  function applyMode({ focus = false } = {}) {
+  // focusVisible: 단축키로 바꿨을 때 옮겨 간 보기 버튼에 포커스 테두리를 보인다 (focusToolbar와 같은 이유)
+  function applyMode({ focus = false, focusVisible = false } = {}) {
     const current = mode();
     el.dataset.mode = current;
     splitButton.hidden = !wide;
@@ -328,21 +331,21 @@ export function createMemoEditor({
     updateToolbarStop(); // 보기에 따라 숨는 버튼이 달라진다
     if (!focus) return;
     // 미리보기에서는 작성 칸이 숨으므로 눌린 보기 버튼에 포커스를 둔다 (Esc, Ctrl+Enter, Ctrl+Shift+P가 계속 편집기에 닿게)
-    if (current === 'preview') el.querySelector('.memo-mode[aria-pressed="true"]').focus();
+    if (current === 'preview') el.querySelector('.memo-mode[aria-pressed="true"]').focus({ focusVisible });
     else input.focus();
   }
 
-  function setMode(next) {
+  function setMode(next, { focusVisible = false } = {}) {
     preferred = next;
     if (next !== 'preview') lastEditMode = next;
     writeStore('localStorage', MODE_KEY, next);
-    applyMode({ focus: true });
+    applyMode({ focus: true, focusVisible });
   }
 
   // Ctrl+Shift+P (맥은 Cmd+Shift+P): 미리보기를 켜고 끈다. GitHub 편집기의 작성·미리보기 전환과 같은 키다.
   // Firefox는 이 키를 사생활 보호 창 열기로 예약해 페이지에 전달하지 않으므로, Firefox에서는 사생활 보호 창이 열린다
   function togglePreview() {
-    setMode(mode() === 'preview' ? lastEditMode : 'preview');
+    setMode(mode() === 'preview' ? lastEditMode : 'preview', { focusVisible: true });
   }
 
   // 나란히 보기에서 양옆으로 한쪽에 얼마씩 넓힐지(--memo-extend), 넓힌 폭으로 나란히 보기를 쓸 수 있는지 정한다.
