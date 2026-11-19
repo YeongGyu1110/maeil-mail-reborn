@@ -131,7 +131,15 @@ export function createMemoView(text, { id }) {
 // ---------- 메모 편집기 ----------
 
 const MODE_KEY = 'maeil-memo-mode'; // 마지막으로 고른 보기 (이 브라우저에만 기억)
-const SPLIT_MIN_WIDTH = 600; // 나란히 보기를 쓸 수 있는 편집기 폭
+const SPLIT_MIN_WIDTH = 600; // 나란히 보기를 쓸 수 있는 편집기 폭 (양옆 여백까지 넓힌 폭으로 잰다)
+// 나란히 보기에서는 칸 하나가 지면 폭의 절반이라 긴 메모의 줄이 너무 짧아진다. 그래서 편집기를 양옆 여백으로 똑같이 넓힌다.
+// 지면이 화면 가운데에 있으므로 한쪽으로만 넓히면 넓은 화면에서 편집기가 한쪽으로 쏠려 지면을 빠져나간 것처럼 보인다.
+// 가운데를 지면과 맞춰 양옆으로 나가면 글 사이에 넓게 넣은 그림처럼 의도한 모양으로 읽힌다
+const SPLIT_MAX_WIDTH = 1000; // 넓혀도 이 폭까지 (칸 하나에 한글 약 30자)
+const SPLIT_EDGE_GAP = 24; // 넓힌 편집기와 화면 끝 사이
+// 지면 끝에 조금만 걸치면 실수처럼 보인다. 지면 밖으로 이만큼 나가지 못하면 지면 안쪽(끝에서 SPLIT_SHEET_INSET)에서 멈춘다
+const SPLIT_MIN_OVERHANG = 48;
+const SPLIT_SHEET_INSET = 16;
 const INPUT_MIN_HEIGHT = 240;
 const PREVIEW_DELAY = 120;
 
@@ -254,14 +262,32 @@ export function createMemoEditor({
     applyMode({ focus: true });
   }
 
-  // 편집기 폭에 따라 나란히 보기를 쓸 수 있는지 정한다
-  const resizeObserver = new ResizeObserver(() => {
-    const nextWide = el.clientWidth >= SPLIT_MIN_WIDTH;
+  // 나란히 보기에서 양옆으로 한쪽에 얼마씩 넓힐지(--memo-extend), 넓힌 폭으로 나란히 보기를 쓸 수 있는지 정한다.
+  // 편집기는 평소 놓인 칸(부모)을 꽉 채우므로, 지금 보기와 상관없이 부모의 폭과 위치로 잰다
+  function layout() {
+    const parent = el.parentElement;
+    if (!parent) return;
+    const base = parent.clientWidth;
+    const box = parent.getBoundingClientRect();
+    const viewport = document.documentElement.clientWidth;
+    let side = Math.min((SPLIT_MAX_WIDTH - base) / 2, box.left - SPLIT_EDGE_GAP, viewport - box.right - SPLIT_EDGE_GAP);
+    const sheet = el.closest('.doc-container')?.getBoundingClientRect();
+    // 지면 안쪽 여백(편집기 끝에서 지면 끝까지): 양옆 중 좁은 쪽
+    const padding = sheet ? Math.min(box.left - sheet.left, sheet.right - box.right) : 0;
+    if (sheet && side > padding - SPLIT_SHEET_INSET && side < padding + SPLIT_MIN_OVERHANG) {
+      side = padding - SPLIT_SHEET_INSET;
+    }
+    const extend = Math.max(0, Math.floor(side));
+    el.style.setProperty('--memo-extend', `${extend}px`);
+    el.classList.toggle('can-extend', extend > 0);
+    el.classList.toggle('is-overhang', extend > 0 && (!sheet || extend > padding));
+    const nextWide = base + extend * 2 >= SPLIT_MIN_WIDTH;
     if (nextWide === wide) return;
     wide = nextWide;
     applyMode();
-  });
-  resizeObserver.observe(el);
+  }
+
+  const resizeObserver = new ResizeObserver(layout);
 
   // ----- 미리보기 -----
 
@@ -505,7 +531,11 @@ export function createMemoEditor({
 
   input.addEventListener('scroll', syncScroll, { passive: true });
 
-  const onWindowResize = () => autosize();
+  // 창 폭이 바뀌면 지면은 그대로여도 오른쪽 여백이 달라진다
+  const onWindowResize = () => {
+    layout();
+    autosize();
+  };
   window.addEventListener('resize', onWindowResize);
 
   updateCount();
@@ -514,7 +544,8 @@ export function createMemoEditor({
     el,
     // 붙인 뒤에 불러야 폭과 높이를 잴 수 있다
     mount() {
-      wide = el.clientWidth >= SPLIT_MIN_WIDTH;
+      if (el.parentElement) resizeObserver.observe(el.parentElement);
+      layout();
       applyMode();
     },
     focus() {

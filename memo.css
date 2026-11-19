@@ -313,6 +313,21 @@
   box-shadow: 0 0 0 3px var(--primary-light);
 }
 
+/* 나란히 보기: 양옆 여백으로 똑같이 넓힌다 (한쪽에 넓힐 폭 --memo-extend는 memo-ui.js가 창 폭에 맞춰 잰다).
+   가운데가 지면과 맞아, 넓은 화면에서도 글 사이에 넓게 넣은 그림처럼 보인다.
+   지면 밖까지 나가면(is-overhang) 종이 위에 올린 한 장처럼 보이도록 그림자를 준다 */
+.memo-editor.can-extend[data-mode="split"] {
+  position: relative;
+  z-index: 1;
+  margin-inline: calc(-1 * var(--memo-extend, 0px));
+}
+
+.memo-editor.is-overhang[data-mode="split"] { box-shadow: var(--paper-shadow); }
+
+.memo-editor.is-overhang[data-mode="split"]:focus-within {
+  box-shadow: 0 0 0 3px var(--primary-light), var(--paper-shadow);
+}
+
 .memo-toolbar {
   display: flex;
   flex-wrap: wrap;
