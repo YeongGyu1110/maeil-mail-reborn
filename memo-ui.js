@@ -7,8 +7,9 @@ const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 const MOD = IS_MAC ? '⌘' : 'Ctrl';
 
 // Ctrl(맥은 Cmd)+글자 단축키인지. 한글 입력 상태에서는 key가 'ㄴ'처럼 자모로 오므로 눌린 자판 자리(code)로도 본다
-const isShortcut = (e, letter) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
+const isShortcut = (e, letter, { shift = false } = {}) => (e.ctrlKey || e.metaKey) && e.shiftKey === shift && !e.altKey
   && (e.key.toLowerCase() === letter || e.code === `Key${letter.toUpperCase()}`);
+const isPreviewToggle = (e) => isShortcut(e, 'p', { shift: true });
 
 const icon = (body, size = 16) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const CHEVRON = icon('<polyline points="6 9 12 15 18 9"></polyline>', 15);
@@ -192,7 +193,7 @@ export function createMemoEditor({
     <div class="memo-toolbar">
       <div class="memo-modes" role="group" aria-label="편집 보기">
         <button type="button" class="memo-mode" data-mode="write" aria-pressed="true">작성</button>
-        <button type="button" class="memo-mode" data-mode="preview" aria-pressed="false">미리보기</button>
+        <button type="button" class="memo-mode" data-mode="preview" aria-pressed="false" title="미리보기 켜고 끄기 (${MOD}+Shift+P)">미리보기</button>
         <button type="button" class="memo-mode" data-mode="split" aria-pressed="false" title="작성하면서 바로 옆에서 미리보기">나란히</button>
       </div>
       <div class="memo-format" role="toolbar" aria-label="마크다운 서식">
@@ -249,6 +250,9 @@ export function createMemoEditor({
   let shiftEnter = false;
   let pendingTab = null; // 한글 조합 중에 누른 Tab (true면 Shift+Tab)
   let pendingTempSave = false; // 한글 조합 중에 누른 Ctrl+S
+  let pendingPreviewToggle = false; // 한글 조합 중에 누른 Ctrl+Shift+P
+  // 미리보기를 끄면 돌아갈 보기 (작성 또는 나란히). 사용자가 고른 보기를 기억한다
+  let lastEditMode = preferred === 'preview' ? 'write' : preferred;
 
   const mode = () => (preferred === 'split' && !wide ? 'write' : preferred);
 
@@ -263,13 +267,23 @@ export function createMemoEditor({
     }
     if (current !== 'preview') autosize();
     if (current !== 'write') renderPreview();
-    if (focus && current !== 'preview') input.focus();
+    if (!focus) return;
+    // 미리보기에서는 작성 칸이 숨으므로 눌린 보기 버튼에 포커스를 둔다 (Esc, Ctrl+Enter, Ctrl+Shift+P가 계속 편집기에 닿게)
+    if (current === 'preview') el.querySelector('.memo-mode[aria-pressed="true"]').focus();
+    else input.focus();
   }
 
   function setMode(next) {
     preferred = next;
+    if (next !== 'preview') lastEditMode = next;
     writeStore('localStorage', MODE_KEY, next);
     applyMode({ focus: true });
+  }
+
+  // Ctrl+Shift+P (맥은 Cmd+Shift+P): 미리보기를 켜고 끈다. GitHub 편집기의 작성·미리보기 전환과 같은 키다.
+  // Firefox는 이 키를 사생활 보호 창 열기로 예약해 페이지에 전달하지 않으므로, Firefox에서는 사생활 보호 창이 열린다
+  function togglePreview() {
+    setMode(mode() === 'preview' ? lastEditMode : 'preview');
   }
 
   // 나란히 보기에서 양옆으로 한쪽에 얼마씩 넓힐지(--memo-extend), 넓힌 폭으로 나란히 보기를 쓸 수 있는지 정한다.
@@ -654,6 +668,13 @@ export function createMemoEditor({
       else onTempSave();
       return;
     }
+    // Ctrl+Shift+P: 미리보기로. 한글 조합 중이면 글자가 확정된 뒤에 바꾼다 (작성 칸을 숨기기 전에 마지막 글자를 넣는다)
+    if (isPreviewToggle(e)) {
+      e.preventDefault();
+      if (e.isComposing || e.keyCode === 229) pendingPreviewToggle = true;
+      else togglePreview();
+      return;
+    }
     if (e.isComposing || e.keyCode === 229) return; // 한글 조합 중인 키는 입력기에 맡긴다
     if (e.key === 'Enter' && mod) {
       e.preventDefault();
@@ -670,9 +691,14 @@ export function createMemoEditor({
     }
   });
 
-  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 취소, Ctrl+Enter로 저장, Ctrl+S로 임시저장한다
+  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 취소, Ctrl+Enter로 저장, Ctrl+S로 임시저장, Ctrl+Shift+P로 미리보기 전환을 한다
   el.addEventListener('keydown', (e) => {
     if (e.target === input) return;
+    if (isPreviewToggle(e)) {
+      e.preventDefault();
+      togglePreview();
+      return;
+    }
     if (isShortcut(e, 's')) e.preventDefault(); // 저장 중에도 브라우저의 '페이지 저장' 창은 띄우지 않는다
     if (busy) return;
     if (e.key === 'Escape') {
@@ -692,6 +718,10 @@ export function createMemoEditor({
     if (pendingTempSave) {
       pendingTempSave = false;
       setTimeout(onTempSave);
+    }
+    if (pendingPreviewToggle) {
+      pendingPreviewToggle = false;
+      setTimeout(togglePreview);
     }
     if (pendingTab === null) return;
     const outdent = pendingTab;
