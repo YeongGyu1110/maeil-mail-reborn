@@ -525,10 +525,10 @@
   margin-left: auto;
 }
 
-.memo-delete { color: var(--danger); }
-.memo-delete:hover:not(:disabled) {
-  background: var(--danger-light);
+/* 저장된 메모를 다 비우면 안내 자리가 '비운 채 저장하면 메모를 지워요'로 바뀐다 */
+.memo-hint.is-warning {
   color: var(--danger);
+  font-weight: 600;
 }
 
 .memo-commit-note {
@@ -539,8 +539,9 @@
   word-break: keep-all;
 }
 
+/* 터치 기기에서는 키보드 단축키 안내를 숨긴다. 지워진다는 경고만은 보인다 */
 @media (hover: none) {
-  .memo-hint { display: none; }
+  .memo-hint:not(.is-warning) { display: none; }
 }
 
 /* 임시저장 버튼: Ctrl 키가 없는 터치 기기(휴대폰·태블릿)에서만 보인다. 키보드·마우스 기기는 Ctrl+S로 임시저장한다.
@@ -557,5 +558,4 @@
   .memo-preview { padding: 14px; }
   .memo-format { margin-left: 0; width: 100%; }
   .memo-editor-foot { padding-left: 12px; }
-  .memo-delete span { display: none; }
 }

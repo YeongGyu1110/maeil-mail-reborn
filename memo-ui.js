@@ -161,7 +161,9 @@ const FORMATS = [
   { name: 'codeblock', label: '코드 블록', icon: icon('<path d="m10 9-3 3 3 3"></path><path d="m14 15 3-3-3-3"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect>') },
 ];
 
-const TRASH = icon('<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>', 14);
+const HINT = `${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소`;
+// 저장된 메모가 있는데 작성 칸을 비우면 안내 자리에 띄운다 (메모는 비운 채 저장해서 지운다. 따로 삭제 버튼을 두지 않는다)
+const HINT_CLEARING = '비운 채 저장하면 메모를 지워요';
 
 // 줄 앞 기호: 들여쓰기, 할 일, 글머리, 번호, 인용
 const LIST_ITEM = /^(\s*)([-*+] \[[ xX]\] |[-*+] |(\d+)([.)]) |> )/;
@@ -173,10 +175,11 @@ const LINE_PREFIX = {
   quote: { match: /^>\s?/, strip: null },
 };
 
-// 편집기의 바깥 동작(저장, 취소, 삭제, 입력할 때)은 화면이 넘겨준다
+// 편집기의 바깥 동작(저장, 임시저장, 취소, 입력할 때)은 화면이 넘겨준다.
+// 메모를 지우는 것도 저장이다: 비운 채 저장하면 화면이 지울지 묻고 지운다
 export function createMemoEditor({
   text = '',
-  canDelete = false,
+  hasMemo = false, // 저장된 메모가 있는지 (비우면 지워진다고 알린다)
   commitNote = '',
   draftRestored = false,
   ariaLabel = '메모',
@@ -185,7 +188,6 @@ export function createMemoEditor({
   onSave = () => {},
   onTempSave = () => {}, // Ctrl+S, 터치 기기의 임시저장 버튼: 커밋하지 않고 저장, 편집기는 열어 둔다
   onCancel = () => {},
-  onDelete = () => {},
 } = {}) {
   const el = document.createElement('div');
   el.className = 'memo-editor';
@@ -213,10 +215,9 @@ export function createMemoEditor({
       <div class="memo-editor-info">
         <span class="memo-count"></span>
         <span class="memo-draft-state"></span>
-        <span class="memo-hint">${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소</span>
+        <span class="memo-hint" aria-live="polite"></span>
       </div>
       <div class="memo-editor-buttons">
-        <button type="button" class="btn btn-sm memo-delete" data-action="delete" title="메모 삭제">${TRASH}<span>삭제</span></button>
         <button type="button" class="btn btn-sm memo-tempsave" data-action="tempsave" title="GitHub에 커밋하지 않고 저장">임시저장</button>
         <button type="button" class="btn btn-sm" data-action="cancel">취소</button>
         <button type="button" class="btn btn-sm btn-primary" data-action="save" title="저장 (${MOD}+Enter)">저장</button>
@@ -229,7 +230,7 @@ export function createMemoEditor({
   const count = el.querySelector('.memo-count');
   const draftState = el.querySelector('.memo-draft-state');
   const saveButton = el.querySelector('[data-action="save"]');
-  const deleteButton = el.querySelector('[data-action="delete"]');
+  const hint = el.querySelector('.memo-hint');
   el.querySelector('[data-action="tempsave"]').hidden = !canTempSave;
   const splitButton = el.querySelector('[data-mode="split"]');
   const commit = el.querySelector('.memo-commit-note');
@@ -237,7 +238,6 @@ export function createMemoEditor({
   input.maxLength = MEMO_MAX;
   input.value = text;
   input.setAttribute('aria-label', ariaLabel);
-  deleteButton.hidden = !canDelete;
   commit.textContent = commitNote;
   commit.hidden = !commitNote;
   if (draftRestored) draftState.textContent = '저장하지 않은 초안을 불러왔어요';
@@ -251,6 +251,7 @@ export function createMemoEditor({
   let pendingTab = null; // 한글 조합 중에 누른 Tab (true면 Shift+Tab)
   let pendingTempSave = false; // 한글 조합 중에 누른 Ctrl+S
   let pendingPreviewToggle = false; // 한글 조합 중에 누른 Ctrl+Shift+P
+  let savedMemo = hasMemo; // 저장된 메모가 있는지 (새 메모를 처음 임시저장하면 생긴다)
   // 미리보기를 끄면 돌아갈 보기 (작성 또는 나란히). 사용자가 고른 보기를 기억한다
   let lastEditMode = preferred === 'preview' ? 'write' : preferred;
 
@@ -367,6 +368,13 @@ export function createMemoEditor({
     input.style.height = `${Math.min(Math.max(input.scrollHeight + 2, INPUT_MIN_HEIGHT), max)}px`;
     input.scrollTop = scrollTop;
     if (window.scrollY !== scrollY) window.scrollTo({ top: scrollY, behavior: 'instant' });
+  }
+
+  // 안내 자리: 평소에는 단축키, 저장된 메모를 다 비우면 지워진다는 경고 (휴대폰에서도 경고는 보인다)
+  function updateHint() {
+    const clearing = savedMemo && !input.value.trim();
+    hint.textContent = clearing ? HINT_CLEARING : HINT;
+    hint.classList.toggle('is-warning', clearing);
   }
 
   function updateCount() {
@@ -642,7 +650,6 @@ export function createMemoEditor({
     else if (target.dataset.action === 'save') onSave();
     else if (target.dataset.action === 'tempsave') onTempSave();
     else if (target.dataset.action === 'cancel') onCancel();
-    else if (target.dataset.action === 'delete') onDelete();
   });
 
   // 서식 버튼을 눌러도 작성 칸의 선택이 풀리지 않게 한다
@@ -732,6 +739,7 @@ export function createMemoEditor({
   input.addEventListener('input', () => {
     autosize();
     updateCount();
+    updateHint();
     schedulePreview();
     onInput(input.value);
   });
@@ -746,6 +754,7 @@ export function createMemoEditor({
   window.addEventListener('resize', onWindowResize);
 
   updateCount();
+  updateHint();
 
   return {
     el,
@@ -769,14 +778,16 @@ export function createMemoEditor({
       input.value = value;
       autosize();
       updateCount();
+      updateHint();
       renderPreview();
     },
     setDraftState(textValue) {
       draftState.textContent = textValue;
     },
-    // 새 메모를 처음 임시저장하면 지울 메모가 생긴다
-    setCanDelete(value) {
-      deleteButton.hidden = !value;
+    // 새 메모를 처음 임시저장하면 저장된 메모가 생긴다 (이제 비우면 지워진다고 알린다)
+    setHasMemo(value) {
+      savedMemo = value;
+      updateHint();
     },
     setBusy(value) {
       busy = value;

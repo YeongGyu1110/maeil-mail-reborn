@@ -1129,7 +1129,7 @@
       view = null;
       editor = createMemoEditor({
         text: draft ? draft.text : memo,
-        canDelete: Boolean(memo),
+        hasMemo: Boolean(memo),
         commitNote: memoCommitNote(question.id),
         draftRestored: Boolean(draft),
         ariaLabel: `${question.id.toUpperCase()} 메모`,
@@ -1138,7 +1138,6 @@
         onSave: save,
         onTempSave: tempSave,
         onCancel: cancel,
-        onDelete: remove,
       });
       els.memoBody.replaceChildren(editor.el);
       els.memoEdit.hidden = true;
@@ -1206,7 +1205,7 @@
           // 저장한 뒤에 더 쓰지 않았으면 초안은 필요 없다 (더 썼으면 초안이 그 글을 계속 보관한다)
           if (!isEditorDirty()) dropDraft();
           editor.setDraftState(state());
-          editor.setCanDelete(true);
+          editor.setHasMemo(true);
         } else {
           editor.setDraftState('임시저장하지 못했어요');
         }
