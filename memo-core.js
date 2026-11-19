@@ -11,7 +11,8 @@ export const MEMO_MAX = 3000;
 export const normalizeMemo = (text) => text.replace(/^(?:[ \t]*\n)+/, '').trimEnd();
 // 메모는 기본 문서와 따로 묶음 문서 4개(users/{uid}/memos/0~3)에 나눠 담는다. 개수를 바꾸면 firestore.rules도 같이 바꾼다
 const MEMO_SHARDS = 4;
-const MEMO_FIELDS = ['memo', 'memoAt'];
+// memoUncommitted: 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모(임시저장, 커밋 실패)면 true
+const MEMO_FIELDS = ['memo', 'memoAt', 'memoUncommitted'];
 const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
 const RETRY_MAX = 10 * 60 * 1000;
 const CACHE_TTL = 10 * 60 * 1000; // 화면을 오갈 때마다 Firestore를 다시 읽지 않도록 탭 단위 캐시
@@ -621,7 +622,9 @@ export function saveSoon() {
 // ---------- 메모 저장 ----------
 // 편집기 모양은 질문 화면이 정하고, 여기서는 글자를 받아 기록에 쓰고 GitHub에 커밋하는 일만 한다.
 
-export const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
+// 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모인지 (임시저장했거나 커밋에 실패했다).
+// 메모와 함께 계정에 남으므로 새로고침하거나 다른 기기에서 열어도 알 수 있다
+export const isUncommitted = (id) => store.item(id).memoUncommitted === true;
 
 // 저장할 때 GitHub에도 커밋하는지
 export const canCommitMemo = canCommit;
@@ -633,17 +636,22 @@ export function memoCommitNote(id) {
 }
 
 // 메모를 저장한다. 빈 글이면 메모를 지운다 (GitHub 파일은 학습 기록으로 그대로 둔다).
+// commit이 false면 임시저장이다: 계정(또는 이 브라우저)에만 쓰고 GitHub에는 올리지 않으며, 알림도 띄우지 않는다
+// (습관처럼 자주 누르는 Ctrl+S라 화면이 시끄럽지 않게, 결과는 편집기가 보여준다). 커밋할 수 있는 계정이면 올리지 않았다고 표시해 둔다.
 // GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후 await 없이 불러야 한다.
-// title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지다.
-// 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
-export async function saveMemo(id, rawText, { title = '' } = {}) {
+// title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지,
+// committed는 GitHub에 올렸는지(올리지 않았으면 null)다. 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
+export async function saveMemo(id, rawText, { title = '', commit = true } = {}) {
   const text = normalizeMemo(rawText);
   const changed = text !== (store.item(id).memo || '');
-  const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
-  if (!changed && !shouldCommit) return { saved: true, changed: false };
+  const committable = Boolean(text) && canCommit();
+  const shouldCommit = commit && committable && (changed || isUncommitted(id));
+  if (!changed && !shouldCommit) return { saved: true, changed: false, committed: null };
 
   if (changed) {
-    store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
+    // 커밋할 때는 성공했다고 보고 표시를 지워 둔다 (실패하면 아래에서 다시 켠다). 임시저장이면 켠다
+    const memoUncommitted = !commit && committable ? true : null;
+    store.update(id, text ? { memo: text, memoAt: Date.now(), memoUncommitted } : { memo: null, memoAt: null, memoUncommitted: null });
     hooks.renderSaveState('pending');
   }
 
@@ -653,25 +661,37 @@ export async function saveMemo(id, rawText, { title = '' } = {}) {
     shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text, title)) : Promise.resolve(),
   ]);
 
+  // 커밋 결과를 계정에 남긴다 (바뀔 때만 쓴다)
+  let flagged = Promise.resolve();
   if (shouldCommit) {
-    if (committed.status === 'fulfilled') uncommitted.delete(id);
-    else uncommitted.add(id);
+    const pending = committed.status === 'rejected';
+    if (pending !== isUncommitted(id)) {
+      store.update(id, { memoUncommitted: pending || null });
+      flagged = store.flush();
+    }
   }
+  const [flagResult] = await Promise.allSettled([flagged]);
 
   if (changed && saved.status === 'fulfilled') hooks.renderSaveState(store.busy ? 'pending' : 'saved');
 
-  if (saved.status === 'rejected') {
+  if (saved.status === 'rejected' || flagResult.status === 'rejected') {
     saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
-    handleSaveError(saved.reason);
+    handleSaveError(saved.status === 'rejected' ? saved.reason : flagResult.reason);
   } else if (committed.status === 'rejected') {
     console.error(committed.reason);
     hooks.toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
   } else {
     resetSaveErrors();
-    hooks.toast(shouldCommit
-      ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
-      : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
+    if (commit) {
+      hooks.toast(shouldCommit
+        ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
+        : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
+    }
   }
 
-  return { saved: saved.status === 'fulfilled', changed };
+  return {
+    saved: saved.status === 'fulfilled',
+    changed,
+    committed: shouldCommit ? committed.status === 'fulfilled' : null,
+  };
 }

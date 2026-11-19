@@ -6,6 +6,10 @@ import { MEMO_MAX, loadMarkdown, renderMarkdown, readStore, writeStore } from '.
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = IS_MAC ? '⌘' : 'Ctrl';
 
+// Ctrl(맥은 Cmd)+글자 단축키인지. 한글 입력 상태에서는 key가 'ㄴ'처럼 자모로 오므로 눌린 자판 자리(code)로도 본다
+const isShortcut = (e, letter) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
+  && (e.key.toLowerCase() === letter || e.code === `Key${letter.toUpperCase()}`);
+
 const icon = (body, size = 16) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const CHEVRON = icon('<polyline points="6 9 12 15 18 9"></polyline>', 15);
 
@@ -175,8 +179,10 @@ export function createMemoEditor({
   commitNote = '',
   draftRestored = false,
   ariaLabel = '메모',
+  canTempSave = false, // 임시저장이 따로 뜻이 있는지 (GitHub에 커밋하는 계정일 때만 버튼을 둔다)
   onInput = () => {},
   onSave = () => {},
+  onTempSave = () => {}, // Ctrl+S, 터치 기기의 임시저장 버튼: 커밋하지 않고 저장, 편집기는 열어 둔다
   onCancel = () => {},
   onDelete = () => {},
 } = {}) {
@@ -206,10 +212,11 @@ export function createMemoEditor({
       <div class="memo-editor-info">
         <span class="memo-count"></span>
         <span class="memo-draft-state"></span>
-        <span class="memo-hint">Tab 들여쓰기 · ${MOD}+Enter로 저장 · Esc로 취소</span>
+        <span class="memo-hint">Tab 들여쓰기 · ${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소</span>
       </div>
       <div class="memo-editor-buttons">
         <button type="button" class="btn btn-sm memo-delete" data-action="delete" title="메모 삭제">${TRASH}<span>삭제</span></button>
+        <button type="button" class="btn btn-sm memo-tempsave" data-action="tempsave" title="GitHub에 커밋하지 않고 저장">임시저장</button>
         <button type="button" class="btn btn-sm" data-action="cancel">취소</button>
         <button type="button" class="btn btn-sm btn-primary" data-action="save" title="저장 (${MOD}+Enter)">저장</button>
       </div>
@@ -222,6 +229,7 @@ export function createMemoEditor({
   const draftState = el.querySelector('.memo-draft-state');
   const saveButton = el.querySelector('[data-action="save"]');
   const deleteButton = el.querySelector('[data-action="delete"]');
+  el.querySelector('[data-action="tempsave"]').hidden = !canTempSave;
   const splitButton = el.querySelector('[data-mode="split"]');
   const commit = el.querySelector('.memo-commit-note');
 
@@ -240,6 +248,7 @@ export function createMemoEditor({
   let busy = false;
   let shiftEnter = false;
   let pendingTab = null; // 한글 조합 중에 누른 Tab (true면 Shift+Tab)
+  let pendingTempSave = false; // 한글 조합 중에 누른 Ctrl+S
 
   const mode = () => (preferred === 'split' && !wide ? 'write' : preferred);
 
@@ -617,6 +626,7 @@ export function createMemoEditor({
     if (target.dataset.mode) setMode(target.dataset.mode);
     else if (target.dataset.format) applyFormat(target.dataset.format);
     else if (target.dataset.action === 'save') onSave();
+    else if (target.dataset.action === 'tempsave') onTempSave();
     else if (target.dataset.action === 'cancel') onCancel();
     else if (target.dataset.action === 'delete') onDelete();
   });
@@ -636,6 +646,14 @@ export function createMemoEditor({
       else indentLines(e.shiftKey);
       return;
     }
+    // Ctrl+S: 브라우저의 '페이지 저장' 대신 임시저장. 한글 조합 중이면 글자가 확정된 뒤에 저장한다
+    if (isShortcut(e, 's')) {
+      e.preventDefault();
+      if (busy) return;
+      if (e.isComposing || e.keyCode === 229) pendingTempSave = true;
+      else onTempSave();
+      return;
+    }
     if (e.isComposing || e.keyCode === 229) return; // 한글 조합 중인 키는 입력기에 맡긴다
     if (e.key === 'Enter' && mod) {
       e.preventDefault();
@@ -643,30 +661,38 @@ export function createMemoEditor({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       if (!busy) onCancel();
-    } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+    } else if (isShortcut(e, 'b')) {
       e.preventDefault();
       applyFormat('bold');
-    } else if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    } else if (isShortcut(e, 'k')) {
       e.preventDefault();
       applyFormat('link');
     }
   });
 
-  // 미리보기 중에도 Esc로 취소, Ctrl+Enter로 저장한다
+  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 취소, Ctrl+Enter로 저장, Ctrl+S로 임시저장한다
   el.addEventListener('keydown', (e) => {
-    if (e.target === input || busy) return;
+    if (e.target === input) return;
+    if (isShortcut(e, 's')) e.preventDefault(); // 저장 중에도 브라우저의 '페이지 저장' 창은 띄우지 않는다
+    if (busy) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       onCancel();
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       onSave();
+    } else if (isShortcut(e, 's')) {
+      onTempSave();
     }
   });
 
   input.addEventListener('beforeinput', continueList);
 
   input.addEventListener('compositionend', () => {
+    if (pendingTempSave) {
+      pendingTempSave = false;
+      setTimeout(onTempSave);
+    }
     if (pendingTab === null) return;
     const outdent = pendingTab;
     pendingTab = null;
@@ -717,6 +743,10 @@ export function createMemoEditor({
     },
     setDraftState(textValue) {
       draftState.textContent = textValue;
+    },
+    // 새 메모를 처음 임시저장하면 지울 메모가 생긴다
+    setCanDelete(value) {
+      deleteButton.hidden = !value;
     },
     setBusy(value) {
       busy = value;

@@ -297,7 +297,8 @@
   color: var(--text-muted);
 }
 
-.memo-foot-warn { color: var(--danger); font-weight: 600; }
+/* 아직 GitHub에 올리지 않은 메모: 오류가 아니라 남은 일이라 빨강 대신 '복습 필요'와 같은 주황으로 둔다 */
+.memo-foot-warn { color: var(--review); font-weight: 600; }
 
 /* ---------- 편집기: 머리(보기 전환, 서식) · 본문(작성 / 미리보기 / 나란히) · 꼬리(정보, 버튼) ---------- */
 .memo-editor {
@@ -540,6 +541,14 @@
 
 @media (hover: none) {
   .memo-hint { display: none; }
+}
+
+/* 임시저장 버튼: Ctrl 키가 없는 터치 기기(휴대폰·태블릿)에서만 보인다. 키보드·마우스 기기는 Ctrl+S로 임시저장한다.
+   화면 폭이 아니라 주 입력 장치로 가르므로, PC에서 창을 좁혀도 나타나지 않고 휴대폰의 '데스크톱 사이트'에서도 사라지지 않는다 */
+.memo-tempsave { display: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  .memo-tempsave { display: inline-flex; }
 }
 
 @media (max-width: 640px) {

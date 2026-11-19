@@ -821,7 +821,7 @@
       readStore, writeStore, removeStore,
       STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground, saveSoon,
       fb, firebaseConfigured, loadFirebase,
-      uncommitted, memoCommitNote, saveMemo, normalizeMemo,
+      isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo,
     } from '../memo-core.js';
     import { createMemoView, createMemoEditor } from '../memo-ui.js';
 
@@ -1077,15 +1077,16 @@
         when.textContent = `${formatWhen(memoAt)} 저장`;
         foot.append(when);
       }
-      if (uncommitted.has(question.id)) {
+      // 임시저장했거나 커밋에 실패해 아직 GitHub에 없는 메모 (실패는 저장할 때 알림으로 따로 알린다)
+      if (isUncommitted(question.id)) {
         const warn = document.createElement('span');
         warn.className = 'memo-foot-warn';
-        warn.textContent = 'GitHub에 아직 올리지 못했어요';
+        warn.textContent = '아직 GitHub에 올리지 않았어요';
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.className = 'link-btn';
         retry.dataset.action = 'memo-recommit';
-        retry.textContent = '다시 올리기';
+        retry.textContent = '올리기';
         foot.append(warn, retry);
       }
       return foot;
@@ -1132,8 +1133,10 @@
         commitNote: memoCommitNote(question.id),
         draftRestored: Boolean(draft),
         ariaLabel: `${question.id.toUpperCase()} 메모`,
+        canTempSave: canCommitMemo(),
         onInput: keepDraft,
         onSave: save,
+        onTempSave: tempSave,
         onCancel: cancel,
         onDelete: remove,
       });
@@ -1153,6 +1156,7 @@
 
     // 저장 버튼을 누른 직후 await 없이 saveMemo를 불러야 GitHub 연결 팝업이 막히지 않는다
     async function save() {
+      if (tempSaving) await tempSaving; // 방금 누른 Ctrl+S가 끝난 뒤에 저장한다
       if (!editor || saving) return;
       const text = editor.getText();
       const memo = item().memo || '';
@@ -1162,7 +1166,8 @@
         else closeEditor();
         return;
       }
-      if (!isEditorDirty() && !uncommitted.has(question.id)) {
+      // 바뀐 것이 없어도 아직 올리지 않은 메모(임시저장)면 저장 버튼으로 커밋한다
+      if (!isEditorDirty() && !isUncommitted(question.id)) {
         dropDraft();
         closeEditor();
         return;
@@ -1176,6 +1181,39 @@
       if (result.saved) dropDraft();
       closeEditor({ fresh: true });
       els.memoEdit.focus({ preventScroll: true });
+    }
+
+    // 임시저장 (Ctrl+S, 터치 기기의 임시저장 버튼): GitHub에 커밋하지 않고 계정(또는 이 브라우저)에만 저장하고, 편집기는 열어 둔 채 계속 쓴다.
+    // 습관처럼 자주 누르는 키라서 쓰는 중에 막지 않는다 (작성 칸을 잠그지 않는다). 그사이 더 쓴 글은 다음 저장 때 들어간다
+    let tempSaving = null;
+
+    function tempSave() {
+      if (!editor || saving || tempSaving) return;
+      const state = () => (canCommitMemo() ? '임시저장됨 · 아직 커밋 전' : '저장됨');
+      const text = editor.getText();
+      if (!text.trim()) return; // 빈 글을 임시저장하면 메모를 지우게 되므로 하지 않는다
+      if (!isEditorDirty()) {
+        editor.setDraftState(isUncommitted(question.id) || !canCommitMemo() ? state() : '바뀐 내용 없음');
+        return;
+      }
+      tempSaving = (async () => {
+        if (needsConflictCheck() && !(await confirmNoConflict(text))) return;
+        editor?.setDraftState('저장 중…');
+        const result = await saveMemo(question.id, text, { title: question.title, commit: false });
+        if (!editor) return;
+        if (result.saved) {
+          editorBase = item().memo || '';
+          // 저장한 뒤에 더 쓰지 않았으면 초안은 필요 없다 (더 썼으면 초안이 그 글을 계속 보관한다)
+          if (!isEditorDirty()) dropDraft();
+          editor.setDraftState(state());
+          editor.setCanDelete(true);
+        } else {
+          editor.setDraftState('임시저장하지 못했어요');
+        }
+        renderStatus();
+      })().finally(() => {
+        tempSaving = null;
+      });
     }
 
     // 다른 탭이 기록을 썼거나(watchOtherTabs가 loadedAt을 0으로 만든다) 기록을 읽은 지 오래됐으면, 저장 직전에 최신 기록을 읽는다.
