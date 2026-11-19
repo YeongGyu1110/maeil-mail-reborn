@@ -10,6 +10,7 @@ const MOD = IS_MAC ? '⌘' : 'Ctrl';
 const isShortcut = (e, letter, { shift = false } = {}) => (e.ctrlKey || e.metaKey) && e.shiftKey === shift && !e.altKey
   && (e.key.toLowerCase() === letter || e.code === `Key${letter.toUpperCase()}`);
 const isPreviewToggle = (e) => isShortcut(e, 'p', { shift: true });
+const isToolbarKey = (e) => e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'F10' || e.code === 'F10');
 
 const icon = (body, size = 16) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const CHEVRON = icon('<polyline points="6 9 12 15 18 9"></polyline>', 15);
@@ -161,6 +162,8 @@ const FORMATS = [
   { name: 'codeblock', label: '코드 블록', icon: icon('<path d="m10 9-3 3 3 3"></path><path d="m14 15 3-3-3-3"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect>') },
 ];
 
+let editorCount = 0; // 편집기마다 다른 id를 붙이려고 센다
+
 const HINT = `${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소`;
 // 저장된 메모가 있는데 작성 칸을 비우면 안내 자리에 띄운다 (메모는 비운 채 저장해서 지운다. 따로 삭제 버튼을 두지 않는다)
 const HINT_CLEARING = '비운 채 저장하면 메모를 지워요';
@@ -191,14 +194,17 @@ export function createMemoEditor({
 } = {}) {
   const el = document.createElement('div');
   el.className = 'memo-editor';
+  const uid = ++editorCount;
+  // 도구 모음(보기 전환 + 서식)은 WAI-ARIA 도구 모음 패턴을 따른다: Tab으로는 한 번만 멈추고, 안에서는 화살표로 옮긴다.
+  // 작성 칸에서는 Tab이 들여쓰기라 Alt+F10으로 도구 모음에 가고(웹 편집기 TinyMCE·CKEditor의 관례), Esc로 작성 칸에 돌아온다
   el.innerHTML = `
-    <div class="memo-toolbar">
+    <div class="memo-toolbar" role="toolbar" aria-label="메모 편집 도구" aria-keyshortcuts="Alt+F10">
       <div class="memo-modes" role="group" aria-label="편집 보기">
         <button type="button" class="memo-mode" data-mode="write" aria-pressed="true">작성</button>
         <button type="button" class="memo-mode" data-mode="preview" aria-pressed="false" title="미리보기 켜고 끄기 (${MOD}+Shift+P)">미리보기</button>
         <button type="button" class="memo-mode" data-mode="split" aria-pressed="false" title="작성하면서 바로 옆에서 미리보기">나란히</button>
       </div>
-      <div class="memo-format" role="toolbar" aria-label="마크다운 서식">
+      <div class="memo-format" role="group" aria-label="마크다운 서식">
         ${FORMATS.map((f) => f
           ? `<button type="button" class="memo-format-btn" data-format="${f.name}" title="${f.label}" aria-label="${f.label}">${f.icon}</button>`
           : '<span class="memo-format-sep" aria-hidden="true"></span>').join('')}
@@ -223,7 +229,8 @@ export function createMemoEditor({
         <button type="button" class="btn btn-sm btn-primary" data-action="save" title="저장 (${MOD}+Enter)">저장</button>
       </div>
     </div>
-    <p class="memo-commit-note"></p>`;
+    <p class="memo-commit-note"></p>
+    <span class="sr-only" id="memo-keys-${uid}">Tab은 들여쓰기, Shift+Tab은 내어쓰기입니다. Alt+F10을 누르면 서식 도구 모음으로 가고, 도구 모음에서 Esc를 누르면 작성 칸으로 돌아옵니다.</span>`;
 
   const input = el.querySelector('.memo-input');
   const preview = el.querySelector('.memo-preview');
@@ -234,10 +241,60 @@ export function createMemoEditor({
   el.querySelector('[data-action="tempsave"]').hidden = !canTempSave;
   const splitButton = el.querySelector('[data-mode="split"]');
   const commit = el.querySelector('.memo-commit-note');
+  const toolbar = el.querySelector('.memo-toolbar');
+
+  // ----- 도구 모음: Tab으로 한 번만 멈추는 자리(tabIndex 0)는 마지막으로 머문 버튼 하나다 -----
+  let toolbarCurrent = el.querySelector('.memo-format-btn'); // 처음 Alt+F10은 서식 버튼으로 간다
+
+  // 지금 누를 수 있는 도구 버튼 (좁아서 숨긴 '나란히', 미리보기에서 숨긴 서식 버튼은 뺀다)
+  function toolbarItems() {
+    return [...toolbar.querySelectorAll('button')]
+      .filter((button) => button.getClientRects().length > 0 && getComputedStyle(button).visibility !== 'hidden');
+  }
+
+  function updateToolbarStop() {
+    const items = toolbarItems();
+    if (items.length && !items.includes(toolbarCurrent)) {
+      toolbarCurrent = items.find((button) => button.getAttribute('aria-pressed') === 'true') || items[0];
+    }
+    for (const button of toolbar.querySelectorAll('button')) button.tabIndex = button === toolbarCurrent ? 0 : -1;
+  }
+
+  function focusToolbar() {
+    updateToolbarStop();
+    toolbarCurrent?.focus();
+  }
+
+  toolbar.addEventListener('focusin', (e) => {
+    const button = e.target.closest('button');
+    if (!button) return;
+    toolbarCurrent = button;
+    updateToolbarStop();
+  });
+
+  toolbar.addEventListener('keydown', (e) => {
+    // 도구 모음에서 Esc는 작성 칸으로 돌아간다 (작성 칸이 없는 미리보기에서는 전처럼 편집 취소)
+    if (e.key === 'Escape' && mode() !== 'preview') {
+      e.preventDefault();
+      e.stopPropagation();
+      input.focus();
+      return;
+    }
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const items = toolbarItems();
+    const index = items.indexOf(document.activeElement);
+    const next = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: items.length - 1 }[e.key];
+    if (index === -1 || next === undefined) return;
+    e.preventDefault();
+    items[(next + items.length) % items.length].focus();
+  });
+
+  updateToolbarStop(); // 붙이기 전이라 보이는 버튼을 잴 수 없으니 일단 첫 서식 버튼에 자리를 둔다 (mount 때 다시 정한다)
 
   input.maxLength = MEMO_MAX;
   input.value = text;
   input.setAttribute('aria-label', ariaLabel);
+  input.setAttribute('aria-describedby', `memo-keys-${uid}`); // 화면 읽기 도구에 작성 칸의 키를 알린다 (화면에는 보이지 않는다)
   commit.textContent = commitNote;
   commit.hidden = !commitNote;
   if (draftRestored) draftState.textContent = '저장하지 않은 초안을 불러왔어요';
@@ -268,6 +325,7 @@ export function createMemoEditor({
     }
     if (current !== 'preview') autosize();
     if (current !== 'write') renderPreview();
+    updateToolbarStop(); // 보기에 따라 숨는 버튼이 달라진다
     if (!focus) return;
     // 미리보기에서는 작성 칸이 숨으므로 눌린 보기 버튼에 포커스를 둔다 (Esc, Ctrl+Enter, Ctrl+Shift+P가 계속 편집기에 닿게)
     if (current === 'preview') el.querySelector('.memo-mode[aria-pressed="true"]').focus();
@@ -658,6 +716,12 @@ export function createMemoEditor({
   input.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
     if (e.key === 'Enter') shiftEnter = e.shiftKey;
+    // Alt+F10: 서식 도구 모음으로 (작성 칸의 선택은 그대로 남아, 도구를 누르면 그 선택에 적용하고 작성 칸으로 돌아온다)
+    if (isToolbarKey(e)) {
+      e.preventDefault();
+      focusToolbar();
+      return;
+    }
     // Tab은 다음 버튼으로 넘어가지 않고 들여쓴다 (작성 칸을 떠날 때는 Ctrl+Enter 저장, Esc 취소).
     // 한글 조합 중에 누른 Tab은 조합이 끝나 글자가 확정된 뒤에 들여쓴다 (조합 중에는 key가 'Process'라 code로 본다)
     if ((e.key === 'Tab' || e.code === 'Tab') && !mod && !e.altKey) {
@@ -701,6 +765,11 @@ export function createMemoEditor({
   // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 취소, Ctrl+Enter로 저장, Ctrl+S로 임시저장, Ctrl+Shift+P로 미리보기 전환을 한다
   el.addEventListener('keydown', (e) => {
     if (e.target === input) return;
+    if (isToolbarKey(e)) {
+      e.preventDefault();
+      focusToolbar();
+      return;
+    }
     if (isPreviewToggle(e)) {
       e.preventDefault();
       togglePreview();
