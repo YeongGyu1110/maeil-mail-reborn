@@ -213,7 +213,7 @@ export function createMemoEditor({
       <div class="memo-editor-info">
         <span class="memo-count"></span>
         <span class="memo-draft-state"></span>
-        <span class="memo-hint">Tab 들여쓰기 · ${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소</span>
+        <span class="memo-hint">${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소</span>
       </div>
       <div class="memo-editor-buttons">
         <button type="button" class="btn btn-sm memo-delete" data-action="delete" title="메모 삭제">${TRASH}<span>삭제</span></button>
