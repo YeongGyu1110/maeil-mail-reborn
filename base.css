@@ -17,12 +17,13 @@
 
   --text-main: #14171a;
   --text-sub: #333d4b;
-  --text-muted: #6b7682;
+  /* 글자로 쓰는 색은 놓이는 바탕(지면·회색 패널·옅은 표시 바탕) 어디서든 WCAG AA 대비 4.5:1을 넘게 둔다 */
+  --text-muted: #5f6974;
 
-  --primary: #00875a;
+  --primary: #007d53;
   --primary-light: #e3f3ec;
   --primary-ink: #ffffff;
-  --review: #a85f06;
+  --review: #a35c06;
   --review-bar: #e8960c;
   --review-light: #fbf0de;
   --star: #d99400;
