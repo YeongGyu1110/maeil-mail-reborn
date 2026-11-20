@@ -1146,11 +1146,14 @@
       editor.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
+    // 편집기를 닫으면 포커스를 편집기를 열었던 자리(메모 고치기 버튼, 메모가 없으면 메모 쓰기 칸)로 돌린다.
+    // 그러지 않으면 편집기와 함께 포커스가 사라져, 키보드로 쓰는 사람은 페이지 처음부터 다시 찾아와야 한다
     function closeEditor({ fresh = false } = {}) {
       editor?.destroy();
       editor = null;
       renderMemo({ fresh });
       renderStatus();
+      (item().memo ? els.memoEdit : els.memoBody.querySelector('.memo-empty'))?.focus({ preventScroll: true });
     }
 
     // 저장 버튼을 누른 직후 await 없이 saveMemo를 불러야 GitHub 연결 팝업이 막히지 않는다
@@ -1179,7 +1182,6 @@
       saving = false;
       if (result.saved) dropDraft();
       closeEditor({ fresh: true });
-      els.memoEdit.focus({ preventScroll: true });
     }
 
     // 임시저장 (Ctrl+S, 터치 기기의 임시저장 버튼): GitHub에 커밋하지 않고 계정(또는 이 브라우저)에만 저장하고, 편집기는 열어 둔 채 계속 쓴다.
@@ -1274,7 +1276,6 @@
       }
       dropDraft();
       closeEditor();
-      (item().memo ? els.memoEdit : els.memoBody.querySelector('.memo-empty'))?.focus({ preventScroll: true });
     }
 
     // 메모 지우기: 작성 칸을 비운 채 저장하면 묻는다 (따로 삭제 버튼은 없다).
