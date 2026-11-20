@@ -836,12 +836,14 @@ export function createMemoEditor({
       layout();
       applyMode();
     },
-    focus() {
+    // keepSelection: 확인 창에서 '계속 쓰기'로 돌아올 때처럼, 커서를 끝으로 옮기지 않고 쓰던 자리로 돌아간다
+    focus({ keepSelection = false } = {}) {
       if (mode() === 'preview') {
         el.querySelector('.memo-mode[aria-pressed="true"]').focus();
         return;
       }
       input.focus({ preventScroll: true });
+      if (keepSelection) return;
       input.setSelectionRange(input.value.length, input.value.length);
       input.scrollTop = input.scrollHeight;
     },

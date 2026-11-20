@@ -1250,7 +1250,7 @@
       });
       if (!overwrite) {
         conflictPending = true;
-        editor?.focus();
+        editor?.focus({ keepSelection: true });
         return false;
       }
       conflictPending = false;
@@ -1268,7 +1268,7 @@
           no: '계속 쓰기',
         });
         if (!discard) {
-          editor?.focus();
+          editor?.focus({ keepSelection: true });
           return;
         }
       }
@@ -1290,7 +1290,7 @@
         no: '취소',
       });
       if (!yes) {
-        editor?.focus();
+        editor?.focus({ keepSelection: true });
         return;
       }
       saving = true;
