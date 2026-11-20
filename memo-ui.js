@@ -4,7 +4,7 @@
 import { MEMO_MAX, loadMarkdown, renderMarkdown, readStore, writeStore } from './memo-core.js';
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const MOD = IS_MAC ? '⌘' : 'Ctrl';
+export const MOD = IS_MAC ? '⌘' : 'Ctrl'; // 단축키 안내에 쓰는 이름 (질문 화면의 확인 창도 쓴다)
 
 // Ctrl(맥은 Cmd)+글자 단축키인지. 한글 입력 상태에서는 key가 'ㄴ'처럼 자모로 오므로 눌린 자판 자리(code)로도 본다
 const isShortcut = (e, letter, { shift = false } = {}) => (e.ctrlKey || e.metaKey) && e.shiftKey === shift && !e.altKey
@@ -188,7 +188,7 @@ export function createMemoEditor({
   ariaLabel = '메모',
   canTempSave = false, // 임시저장이 따로 뜻이 있는지 (GitHub에 커밋하는 계정일 때만 버튼을 둔다)
   onInput = () => {},
-  onSave = () => {},
+  onSave = () => {}, // 저장 버튼은 onSave(), Ctrl+Enter는 onSave({ shortcut: true })로 부른다
   onTempSave = () => {}, // Ctrl+S, 터치 기기의 임시저장 버튼: 커밋하지 않고 저장, 편집기는 열어 둔다
   onCancel = () => {},
 } = {}) {
@@ -752,7 +752,7 @@ export function createMemoEditor({
     if (e.isComposing || e.keyCode === 229) return; // 한글 조합 중인 키는 입력기에 맡긴다
     if (e.key === 'Enter' && mod) {
       e.preventDefault();
-      if (!busy) onSave();
+      if (!busy) onSave({ shortcut: true });
     } else if (e.key === 'Escape') {
       e.preventDefault();
       if (!busy) onCancel();
@@ -785,7 +785,7 @@ export function createMemoEditor({
       onCancel();
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      onSave();
+      onSave({ shortcut: true });
     } else if (isShortcut(e, 's')) {
       onTempSave();
     }

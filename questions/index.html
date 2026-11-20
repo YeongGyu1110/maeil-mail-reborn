@@ -823,7 +823,7 @@
       fb, firebaseConfigured, loadFirebase,
       isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo,
     } from '../memo-core.js';
-    import { createMemoView, createMemoEditor } from '../memo-ui.js';
+    import { createMemoView, createMemoEditor, MOD } from '../memo-ui.js';
 
     // 가져오기가 모두 성공해 이 모듈이 실행되기 시작했다는 표시 (../module-guard.js가 본다)
     window.maeilModuleReady = true;
@@ -1157,7 +1157,8 @@
     }
 
     // 저장 버튼을 누른 직후 await 없이 saveMemo를 불러야 GitHub 연결 팝업이 막히지 않는다
-    async function save() {
+    // shortcut: Ctrl+Enter로 저장했는지 (저장 버튼이면 false)
+    async function save({ shortcut = false } = {}) {
       if (tempSaving) await tempSaving; // 방금 누른 Ctrl+S가 끝난 뒤에 저장한다
       if (!editor || saving) return;
       const text = editor.getText();
@@ -1174,6 +1175,10 @@
         closeEditor();
         return;
       }
+      // Ctrl+Enter는 쓰다가 잘못 누르기 쉬우므로(Ctrl+S를 누른 손을 떼기 전에 Enter로 줄을 바꾸는 등) GitHub에 커밋할 때는 한 번 더 묻는다.
+      // 커밋은 저장소 기록에 남아 되돌리기 어렵지만, 커밋하지 않는 저장은 편집기를 다시 열어 이어 쓰면 되므로 묻지 않는다.
+      // 저장 버튼은 일부러 누르는 것이라 묻지 않는다. 확인 창의 '커밋'을 누른 직후라 GitHub 연결 팝업은 막히지 않는다
+      if (shortcut && canCommitMemo() && !(await confirmCommit())) return;
       // 기록이 낡았을 때만 기다린다. 대개는 기다리지 않고 바로 saveMemo를 부른다 (GitHub 연결 팝업)
       if (needsConflictCheck() && !(await confirmNoConflict(text))) return;
       saving = true;
@@ -1215,6 +1220,21 @@
       })().finally(() => {
         tempSaving = null;
       });
+    }
+
+    async function confirmCommit() {
+      const yes = await confirmDialog({
+        title: 'GitHub에 커밋할까요?',
+        body: `${store.memoRepo.fullName}의 ${question.id}.md로 커밋하고 편집기를 닫아요. 커밋하지 않고 저장만 하려면 ${MOD}+S로 임시저장하세요.`,
+        yes: '커밋',
+        no: '계속 쓰기',
+        tone: 'primary',
+      });
+      if (!yes) {
+        editor?.focus({ keepSelection: true });
+        return false;
+      }
+      return Boolean(editor);
     }
 
     // 다른 탭이 기록을 썼거나(watchOtherTabs가 loadedAt을 0으로 만든다) 기록을 읽은 지 오래됐으면, 저장 직전에 최신 기록을 읽는다.
@@ -1326,11 +1346,14 @@
 
     bindDialogArrowKeys(els.confirm);
 
-    function confirmDialog({ title, body, yes, no }) {
+    // tone: '예' 버튼 색. 지우거나 버리는 일은 빨강(danger), 저장처럼 해가 없는 일은 초록(primary)
+    function confirmDialog({ title, body, yes, no, tone = 'danger' }) {
       const dialog = els.confirm;
       dialog.querySelector('#confirm-title').textContent = title;
       dialog.querySelector('#confirm-body').textContent = body;
-      dialog.querySelector('[data-answer="yes"]').textContent = yes;
+      const yesButton = dialog.querySelector('[data-answer="yes"]');
+      yesButton.textContent = yes;
+      yesButton.className = `btn btn-${tone}`;
       dialog.querySelector('[data-answer="no"]').textContent = no;
       return new Promise((resolve) => {
         const finish = (answer) => {
