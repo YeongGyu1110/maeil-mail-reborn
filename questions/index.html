@@ -36,259 +36,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sass.min.js" integrity="sha384-vtpsGXKlAgv7RZuBJVa1roUNFN9110ZNgbj9o6S42DEC9jn43k4IHYtkqaoOODTS" crossorigin="anonymous"></script>
 
   <link rel="icon" href="../favicon.png" type="image/png">
+  <link rel="stylesheet" href="../base.css">
   <link rel="stylesheet" href="../memo.css">
+  <!-- 배포 직후 캐시가 섞여 학습 기록 모듈이 멈추면 한 번 새로 받아 고친다 -->
+  <script defer src="../module-guard.js"></script>
 
   <style>
-    :root {
-      /* [라이트 모드] 책상(캔버스) 위에 놓인 흰 종이 */
-      --bg-canvas: #e9ecef;
-      --bg-paper: #fdfdfd;
-      --bg-subtle: #f1f3f5;
-      --bg-hover: #dfe3e7;
-      --rule: #d5dae0;
-      --rule-strong: #8a939d;
-      --paper-shadow: 0 1px 2px rgba(20, 23, 26, 0.06), 0 4px 16px rgba(20, 23, 26, 0.05);
-      --scrollbar: #b6bdc5;
-      --scrollbar-hover: #8a939d;
+    /* 질문 화면: 답변을 읽고(본문) → 이해도를 표시하고 → 내 언어로 정리하는(학습 기록) 한 장의 문서 */
 
-      --text-main: #14171a;
-      --text-sub: #333d4b;
-      --text-muted: #6b7682;
-
-      --primary: #00875a;
-      --danger: #c62828;
-
-      --skeleton-base: #eceef1;
-      --skeleton-highlight: #dde1e5;
-
-      /* 코드 블록 */
-      --code-block-bg: #f3f5f7;
-      --code-block-text: #1e293b;
-      --code-inline-bg: #eef0f3;
-      --code-inline-color: #1e293b;
-
-      --syntax-comment: #64748b;
-      --syntax-punctuation: #475569;
-      --syntax-keyword: #c2410c;
-      --syntax-tag: #15803d;
-      --syntax-string: #0369a1;
-      --syntax-number: #0284c7;
-      --syntax-function: #7c3aed;
-      --syntax-operator: #c2410c;
-      --syntax-variable: #b45309;
-    }
-
-    [data-theme="dark"] {
-      /* [다크 모드] 무채색 흑연 캔버스 위의 짙은 종이 */
-      --bg-canvas: #111113;
-      --bg-paper: #1a1a1c;
-      --bg-subtle: #222225;
-      --bg-hover: #26262a;
-      --rule: #303035;
-      --rule-strong: #6c727b;
-      --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-      --scrollbar: #3a3a3f;
-      --scrollbar-hover: #5a5a61;
-
-      --text-main: #f0f2f5;
-      --text-sub: #c4c8cf;
-      --text-muted: #838a94;
-
-      --primary: #00c47d;
-      --danger: #f87171;
-
-      --skeleton-base: #232326;
-      --skeleton-highlight: #2e2e32;
-
-      /* 코드 블록 */
-      --code-block-bg: #141416;
-      --code-block-text: #e2e8f0;
-      --code-inline-bg: #26262a;
-      --code-inline-color: #e2e8f0;
-
-      --syntax-comment: #828d9d;
-      --syntax-punctuation: #94a3b8;
-      --syntax-keyword: #fb923c;
-      --syntax-tag: #4ade80;
-      --syntax-string: #7dd3fc;
-      --syntax-number: #38bdf8;
-      --syntax-function: #c084fc;
-      --syntax-operator: #fb923c;
-      --syntax-variable: #fbbf24;
-    }
-
-    * { box-sizing: border-box; }
-
-    /* 문서 길이에 따라 스크롤바가 생기거나 사라져도 화면이 옆으로 밀리지 않게 자리를 비워 둔다 */
-    html { scrollbar-gutter: stable; }
-
-    /* 스크롤바: 화살표 없이 얇고 각진 막대만 남긴다 */
-    ::-webkit-scrollbar {
-      width: 10px;
-      height: 10px;
-    }
-
-    ::-webkit-scrollbar-track { background: transparent; }
-    html::-webkit-scrollbar-track { background: var(--bg-canvas); }
-    ::-webkit-scrollbar-corner { background: transparent; }
-
-    ::-webkit-scrollbar-thumb {
-      border: 3px solid transparent;
-      border-radius: 2px;
-      background: var(--scrollbar) padding-box;
-    }
-
-    ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover) padding-box; }
-
-    @supports not selector(::-webkit-scrollbar) {
-      html {
-        scrollbar-width: thin;
-        scrollbar-color: var(--scrollbar) transparent;
-      }
-    }
-
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-      line-height: 1.75;
-      letter-spacing: -0.015em;
-      color: var(--text-sub);
-      background-color: var(--bg-canvas);
-      transition: background-color 0.15s ease, color 0.15s ease;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* 상단 내비게이션 바: 캔버스와 같은 면, 구분선 없음 */
-    .top-nav {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 52px;
-      padding: 0 24px;
-      background-color: var(--bg-canvas);
-    }
-
-    .nav-breadcrumbs {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-      font-size: 13.5px;
-      font-weight: 500;
-    }
-
-    .nav-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 700;
-      color: var(--text-main);
-      text-decoration: none;
-    }
-
-    .nav-brand .brand-dot {
-      width: 7px;
-      height: 7px;
-      background-color: var(--primary);
-      border-radius: 1px;
-    }
-
-    .nav-separator {
-      color: var(--rule-strong);
-      user-select: none;
-    }
-
-    .nav-link {
-      color: var(--text-muted);
-      text-decoration: none;
-      white-space: nowrap;
-      transition: color 0.15s;
-    }
-
-    .nav-link:hover {
-      color: var(--text-main);
-    }
-
-    .nav-current {
-      color: var(--text-main);
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .nav-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* 테두리 없는 텍스트형 버튼 */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      height: 32px;
-      padding: 0 10px;
-      border: none;
-      border-radius: 3px;
-      background-color: transparent;
-      color: var(--text-sub);
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      text-decoration: none;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background-color 0.15s, color 0.15s;
-    }
-
-    .btn:hover:not(:disabled) {
-      background-color: var(--bg-hover);
-      color: var(--text-main);
-    }
-
-    .btn:disabled {
-      opacity: 0.45;
-      cursor: default;
-    }
-
-    /* 메모 저장 버튼 (질문 목록과 같은 모양) */
-    .btn-primary {
-      background-color: var(--primary);
-      color: #ffffff;
-    }
-
-    [data-theme="dark"] .btn-primary { color: #0c1512; }
-
-    .btn-primary:hover:not(:disabled) {
-      background-color: var(--primary);
-      color: #ffffff;
-      filter: brightness(1.08);
-    }
-
-    [data-theme="dark"] .btn-primary:hover:not(:disabled) { color: #0c1512; }
-
-    .btn-sm {
-      height: 28px;
-      padding: 0 8px;
-      font-size: 12.5px;
-    }
-
-    .btn-icon-only {
-      width: 32px;
-      padding: 0;
-    }
-
-    .sun-icon { display: none; }
-    .moon-icon { display: block; }
-    [data-theme="dark"] .sun-icon { display: block; }
-    [data-theme="dark"] .moon-icon { display: none; }
-
-    /* 문서 지면: 테두리 대신 면 대비와 옅은 그림자로 종이를 구분 */
+    /* ---------- 문서 지면 ---------- */
     .page-wrapper {
       max-width: 820px;
       margin: 20px auto 72px;
@@ -299,23 +55,41 @@
       background: var(--bg-paper);
       border-radius: 2px;
       box-shadow: var(--paper-shadow);
-      padding: 56px 72px 48px;
+      padding: 52px 72px 44px;
     }
 
-    /* 문서 머리: 분류·문서 번호 → 제목 → 머리 구분선 */
+    /* 문서 머리: 분류(+ 별표) → 제목 → 내 학습 상태 → 머리 구분선 */
     .doc-header {
-      padding-bottom: 28px;
+      padding-bottom: 26px;
       border-bottom: 1px solid var(--rule-strong);
       margin-bottom: 36px;
     }
 
+    .doc-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 28px;
+      margin-bottom: 12px;
+    }
+
     .doc-meta {
-      margin-bottom: 18px;
+      min-width: 0;
       font-size: 12.5px;
       font-weight: 600;
       color: var(--text-muted);
       letter-spacing: 0.01em;
     }
+
+    .star-toggle {
+      margin-right: -9px;
+      color: var(--text-muted);
+    }
+
+    .star-toggle[aria-pressed="true"],
+    .star-toggle[aria-pressed="true"]:hover { color: var(--star); }
+    .star-toggle[aria-pressed="true"] svg { fill: currentColor; }
 
     h1#question-title {
       font-size: 27px;
@@ -328,7 +102,36 @@
       overflow-wrap: break-word;
     }
 
-    /* 본문 마크다운 타이포그래피 */
+    /* 지금 학습 상태: 기록한 것이 있을 때만 보인다(미학습이면 질문 목록처럼 표시하지 않는다). 누르면 학습 기록으로 내려간다.
+       학습 수준은 색이 뜻이라 색칠한 표시로, 메모는 질문 목록의 메모 줄처럼 면 없는 글자 링크로 둔다 */
+    .doc-status {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 12px;
+      margin-top: 16px;
+    }
+
+    .doc-status .level-badge { transition: box-shadow 0.15s; }
+    .doc-status .level-badge:hover { box-shadow: inset 0 0 0 1px currentColor; }
+
+    .status-memo {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 24px;
+      color: var(--text-muted);
+      font-size: 12.5px;
+      font-weight: 600;
+      text-decoration: none;
+      text-underline-offset: 3px;
+      white-space: nowrap;
+    }
+
+    .status-memo svg { color: var(--primary); }
+    .status-memo:hover { color: var(--text-main); text-decoration: underline; }
+
+    /* ---------- 본문 마크다운 타이포그래피 ---------- */
     #content {
       font-size: 16px;
       line-height: 1.85;
@@ -386,7 +189,7 @@
     #content blockquote > :first-child { margin-top: 0; }
     #content blockquote > :last-child { margin-bottom: 0; }
 
-    /* 표:위·아래 굵은 선과 머리 아래 선만 두는 문서식 표 */
+    /* 표: 위·아래 굵은 선과 머리 아래 선만 두는 문서식 표 */
     #content table {
       width: 100%;
       border-collapse: collapse;
@@ -419,7 +222,7 @@
       padding: 2px 5px;
       border-radius: 2px;
       font-size: 0.86em;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--mono);
     }
 
     /* 코드 블록: 테두리 없이 옅은 면으로만 구분 */
@@ -430,12 +233,12 @@
 
     #content pre {
       background-color: var(--code-block-bg);
-      border-radius: 2px;
+      border-radius: 3px;
       padding: 18px 20px;
       overflow-x: auto;
       margin: 0;
       color: var(--code-block-text);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: var(--mono);
       font-size: 13.5px;
       line-height: 1.65;
       tab-size: 2;
@@ -476,8 +279,10 @@
 
     .code-copy-btn.copied { color: var(--primary); }
 
+    /* 터치 화면에서는 복사 버튼이 늘 보이므로, 코드 첫 줄을 가리지 않게 위쪽에 버튼 자리를 띄운다 */
     @media (hover: none) {
       .code-copy-btn { opacity: 1; }
+      #content .code-wrapper pre { padding-top: 38px; }
     }
 
     #content a {
@@ -487,58 +292,114 @@
       text-underline-offset: 3px;
     }
 
-    /* Prism 토큰 스타일 */
-    .token.comment, .token.prolog, .token.doctype, .token.cdata { color: var(--syntax-comment); font-style: italic; }
-    .token.punctuation { color: var(--syntax-punctuation); }
-    .token.property, .token.tag, .token.boolean, .token.constant, .token.symbol { color: var(--syntax-tag); }
-    .token.number { color: var(--syntax-number); }
-    .token.string, .token.char, .token.builtin, .token.inserted { color: var(--syntax-string); }
-    .token.operator, .token.entity, .token.url { color: var(--syntax-operator); }
-    .token.keyword { color: var(--syntax-keyword); font-weight: 600; }
-    .token.function, .token.class-name { color: var(--syntax-function); }
-    .token.variable { color: var(--syntax-variable); }
-
-    /* 내 메모: 답을 읽으면서 바로 쓰는 칸. 왼쪽 세로줄은 질문 목록의 '오늘 받은 질문'과 같은 표시다 (편집기 모양은 memo.css) */
-    .memo-section {
-      margin-top: 48px;
-      padding: 2px 0 2px 16px;
-      border-left: 2px solid var(--primary);
+    /* ---------- 학습 기록: 본문 뒤에 구분선으로 나눈 문서의 마지막 절. 이해도 → 내 메모 순서로 둔다 ---------- */
+    .study {
+      margin-top: 64px;
+      padding-top: 28px;
+      border-top: 1px solid var(--rule-strong);
     }
 
-    .memo-section[hidden] { display: none; }
+    .study,
+    .study-block { scroll-margin-top: calc(var(--nav-height) + 16px); }
 
-    .memo-section-head {
+    /* 무엇을 하라는 설명은 빈 메모 칸의 안내 문구가 대신한다 (같은 말을 두 번 하지 않는다) */
+    .study-head {
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
-      gap: 2px 12px;
-      margin-bottom: 10px;
+      gap: 4px 16px;
+      margin-bottom: 24px;
     }
 
-    .memo-section-title {
+    .study-title {
       margin: 0;
-      font-size: 12.5px;
-      font-weight: 600;
-      color: var(--primary);
+      font-size: 19px;
+      font-weight: 700;
+      line-height: 1.5;
+      color: var(--text-main);
     }
 
-    .memo-section-status {
+    .study-sync {
       display: flex;
       flex-wrap: wrap;
-      gap: 2px 10px;
+      align-items: baseline;
+      gap: 0 8px;
+      margin: 0;
       font-size: 12px;
+      line-height: 1.6;
       color: var(--text-muted);
     }
 
-    .memo-account[data-state="error"] { color: var(--danger); }
+    .study-sync .sync-dot { margin-right: -2px; }
+    .study-sync[data-state="error"] .memo-account { color: var(--danger); }
 
-    .memo-save-state { font-weight: 600; }
-    .memo-save-state:empty { display: none; }
-    .memo-save-state[data-state="saved"] { color: var(--primary); }
-    .memo-save-state[data-state="failed"],
-    .memo-save-state[data-state="unkept"],
-    .memo-save-state[data-state="full"] { color: var(--danger); }
+    .study-block + .study-block { margin-top: 32px; }
+
+    .study-block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 28px;
+      margin-bottom: 10px;
+    }
+
+    .study-block-title {
+      margin: 0;
+      font-size: 14.5px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .study-block-hint {
+      margin: 0;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    /* 이해도: 셋 중 하나를 고르는 분할 버튼. 고른 칸만 종이처럼 떠오르고 수준의 색을 띤다 */
+    .level-control {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      border-radius: 6px;
+      background: var(--bg-subtle);
+      box-shadow: inset 0 0 0 1px var(--rule);
+    }
+
+    .level-option {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 36px;
+      padding: 0 18px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+
+    .level-option:hover { color: var(--text-main); }
+    .level-option:not([aria-checked="true"]) .dot { opacity: 0.55; }
+
+    .level-option[aria-checked="true"] {
+      background: var(--bg-paper);
+      color: var(--text-main);
+      box-shadow: 0 1px 2px rgba(20, 23, 26, 0.1), 0 0 0 1px var(--rule);
+    }
+
+    .level-option[data-level="review"][aria-checked="true"] { color: var(--review); }
+    .level-option[data-level="done"][aria-checked="true"] { color: var(--primary); }
+
+    .level-option:focus-visible { outline-offset: -2px; }
 
     .memo-loading {
       margin: 0;
@@ -546,9 +407,7 @@
       color: var(--text-muted);
     }
 
-    .memo-section + .doc-pagination { margin-top: 40px; }
-
-    /* 문서 꼬리: 이전 / 다음 질문 */
+    /* ---------- 문서 꼬리: 이전 / 다음 질문 ---------- */
     .doc-pagination {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -596,63 +455,27 @@
     .doc-error .doc-error-title { color: var(--danger); font-weight: 600; }
     .doc-error .doc-error-hint { margin-top: 6px; font-size: 14px; color: var(--text-muted); }
 
-    /* 스켈레톤 로딩 */
-    .skeleton {
-      background: linear-gradient(90deg, var(--skeleton-base) 25%, var(--skeleton-highlight) 50%, var(--skeleton-base) 75%);
-      background-size: 200% 100%;
-      animation: skeleton-shimmer 1.4s ease-in-out infinite;
-      border-radius: 2px;
-    }
-
-    @keyframes skeleton-shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-
     .skeleton-title { width: 70%; height: 30px; }
     .skeleton-line { height: 15px; margin-bottom: 14px; }
 
-    /* 토스트 */
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(12px);
-      max-width: calc(100% - 32px);
-      background: var(--text-main);
-      color: var(--bg-paper);
-      padding: 8px 16px;
-      font-size: 13px;
-      font-weight: 600;
-      border-radius: 3px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s, transform 0.2s;
-      z-index: 200;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
-    .toast[data-tone="error"] {
-      background: var(--danger);
-      color: #ffffff;
-    }
-
     @media (max-width: 640px) {
-      .top-nav { padding: 0 12px; }
-      .nav-brand span { display: none; }
+      .nav-brand span:not(.brand-dot) { display: none; }
       .page-wrapper { margin: 0; padding: 0; }
       .doc-container {
         border-radius: 0;
         box-shadow: none;
-        padding: 32px 20px 28px;
+        padding: 28px 20px 28px;
       }
-      .doc-meta { margin-bottom: 14px; }
       h1#question-title { font-size: 23px; }
       #content { font-size: 15.5px; }
+      .study { margin-top: 48px; }
+      .study-head { flex-direction: column; align-items: flex-start; }
+      .level-control {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        width: 100%;
+      }
+      .level-option { padding: 0 8px; }
       .doc-pagination { grid-template-columns: 1fr; gap: 16px; }
       .page-nav-card.next { text-align: left; }
       #content table {
@@ -665,7 +488,7 @@
     /* 인쇄: 지면만 남긴다 */
     @media print {
       body { background: #ffffff; }
-      .top-nav, .memo-section, .doc-pagination, .code-copy-btn, .toast { display: none !important; }
+      .top-nav, .star-toggle, .doc-status, .study, .doc-pagination, .code-copy-btn, .toast { display: none !important; }
       .page-wrapper { max-width: none; margin: 0; padding: 0; }
       .doc-container { box-shadow: none; padding: 0; }
       #content pre { white-space: pre-wrap; }
@@ -677,26 +500,26 @@
   <!-- 상단 내비게이션 바 -->
   <header class="top-nav">
     <nav class="nav-breadcrumbs" aria-label="경로 탐색">
-      <a class="nav-brand" href="../">
+      <a class="nav-brand q-link" href="../">
         <span class="brand-dot"></span>
         <span>매일메일</span>
       </a>
       <span class="nav-separator">/</span>
-      <a class="nav-link" href="../">질문 목록</a>
+      <a class="nav-link q-link" href="../">질문 목록</a>
       <span class="nav-separator">/</span>
       <span class="nav-current" id="nav-q-id">...</span>
     </nav>
 
     <div class="nav-actions">
       <button type="button" class="btn" id="btn-share" title="질문 링크 복사">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
         </svg>
         <span>공유</span>
       </button>
 
-      <button id="theme-toggle" class="btn btn-icon-only" aria-label="테마 전환" type="button" title="테마 전환">
+      <button id="theme-toggle" class="btn btn-icon" aria-label="테마 전환" type="button" title="테마 전환">
         <svg class="moon-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
@@ -719,10 +542,28 @@
   <main class="page-wrapper">
     <article class="doc-container">
       <header class="doc-header">
-        <div id="doc-meta" class="doc-meta">면접 질문</div>
+        <div class="doc-meta-row">
+          <div id="doc-meta" class="doc-meta">면접 질문</div>
+          <button type="button" id="star-toggle" class="btn btn-sm star-toggle" aria-pressed="false" hidden>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span id="star-label">별표</span>
+          </button>
+        </div>
         <h1 id="question-title">
           <div class="skeleton skeleton-title"></div>
         </h1>
+        <div id="doc-status" class="doc-status" hidden>
+          <a id="status-level" class="level-badge" href="#study" title="학습 기록으로 이동"></a>
+          <a id="status-memo" class="status-memo" href="#memo" title="내 메모로 이동" hidden>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            내 메모
+          </a>
+        </div>
       </header>
 
       <!-- 본문 영역 -->
@@ -735,27 +576,52 @@
         <div class="skeleton skeleton-line" style="width: 80%;"></div>
       </section>
 
-      <!-- 내 메모: 답을 읽으면서 바로 쓴다. 저장은 질문 목록과 같은 코드(memo-core.js)로 같은 곳에 한다 -->
-      <section id="memo" class="memo-section" aria-labelledby="memo-heading" hidden>
-        <div class="memo-section-head">
-          <h2 id="memo-heading" class="memo-section-title">내 메모</h2>
-          <div class="memo-section-status">
+      <!-- 학습 기록: 답을 읽은 뒤 이해도를 표시하고 내 언어로 정리한다. 저장은 질문 목록과 같은 코드(memo-core.js)로 같은 곳에 한다 -->
+      <section id="study" class="study" aria-labelledby="study-heading" hidden>
+        <div class="study-head">
+          <h2 id="study-heading" class="study-title">학습 기록</h2>
+          <p id="study-sync" class="study-sync">
+            <span class="sync-dot" aria-hidden="true"></span>
             <span id="memo-account" class="memo-account"></span>
-            <span id="memo-save-state" class="memo-save-state" role="status"></span>
+            <span id="memo-save-state" class="save-state" role="status"></span>
+          </p>
+        </div>
+
+        <div class="study-block">
+          <div class="study-block-head">
+            <h3 id="level-heading" class="study-block-title">이해도</h3>
+          </div>
+          <div id="level-control" class="level-control" role="radiogroup" aria-labelledby="level-heading">
+            <button type="button" class="level-option" role="radio" data-level="new" aria-checked="true"><span class="dot"></span>미학습</button>
+            <button type="button" class="level-option" role="radio" data-level="review" aria-checked="false" tabindex="-1"><span class="dot dot-review"></span>복습 필요</button>
+            <button type="button" class="level-option" role="radio" data-level="done" aria-checked="false" tabindex="-1"><span class="dot dot-done"></span>완벽 이해</button>
           </div>
         </div>
-        <div id="memo-body">
-          <p class="memo-loading">메모를 불러오는 중…</p>
+
+        <div id="memo" class="study-block">
+          <div class="study-block-head">
+            <h3 class="study-block-title">내 메모</h3>
+            <button type="button" id="memo-edit" class="btn btn-sm btn-soft" hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              편집
+            </button>
+          </div>
+          <div id="memo-body">
+            <p class="memo-loading">메모를 불러오는 중…</p>
+          </div>
         </div>
       </section>
 
       <!-- 이전/다음 질문 네비게이션 -->
       <nav class="doc-pagination" id="doc-pagination" style="display: none;" aria-label="이전문서/다음문서 탐색">
-        <a id="prev-link" class="page-nav-card prev" href="#" style="visibility: hidden;">
+        <a id="prev-link" class="page-nav-card prev q-link" href="#" style="visibility: hidden;">
           <span class="page-nav-sub">← 이전 질문</span>
           <span class="page-nav-title" id="prev-title"></span>
         </a>
-        <a id="next-link" class="page-nav-card next" href="#" style="visibility: hidden;">
+        <a id="next-link" class="page-nav-card next q-link" href="#" style="visibility: hidden;">
           <span class="page-nav-sub">다음 질문 →</span>
           <span class="page-nav-title" id="next-title"></span>
         </a>
@@ -764,6 +630,15 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-body"></p>
+    <div class="confirm-buttons">
+      <button type="button" class="btn" data-answer="no" autofocus></button>
+      <button type="button" class="btn btn-danger" data-answer="yes"></button>
+    </div>
+  </dialog>
 
   <script>
     function initTheme() {
@@ -791,7 +666,7 @@
       toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
     }
 
-    // 본문을 다 그리면 질문 번호와 제목을 넘겨준다 (메모 스크립트가 이것을 기다렸다가 메모 칸을 연다)
+    // 본문을 다 그리면 질문 번호와 제목을 넘겨준다 (학습 기록 스크립트가 이것을 기다렸다가 학습 기록을 연다)
     let resolveQuestion;
     window.questionReady = new Promise((resolve) => { resolveQuestion = resolve; });
 
@@ -799,6 +674,17 @@
       fe: { dir: 'frontend', name: '프론트엔드' },
       be: { dir: 'backend', name: '백엔드' },
     };
+
+    // 카테고리 목차(toc-category.md)에서 이 질문이 든 카테고리 이름을 찾는다. 못 찾으면 빈 문자열
+    function categoryOf(categoryToc, id) {
+      let current = '';
+      for (const line of categoryToc.split('\n')) {
+        const heading = line.match(/^##\s+(.+)/);
+        if (heading) current = heading[1].trim();
+        else if (line.includes(`(contents/${id}.md)`)) return current;
+      }
+      return '';
+    }
 
     async function loadContent() {
       const params = new URLSearchParams(window.location.search);
@@ -815,9 +701,10 @@
         const area = AREAS[match[1]];
         document.getElementById('doc-meta').innerText = `${area.name} 면접 질문`;
 
-        const [tocRes, contentRes] = await Promise.all([
+        const [tocRes, contentRes, categoryText] = await Promise.all([
           fetch(`../${area.dir}/toc.md`),
-          fetch(`../${area.dir}/contents/${q}.md`)
+          fetch(`../${area.dir}/contents/${q}.md`),
+          fetch(`../${area.dir}/toc-category.md`).then((res) => (res.ok ? res.text() : '')).catch(() => ''),
         ]);
 
         if (!contentRes.ok) throw new Error("답변 파일을 찾을 수 없습니다.");
@@ -831,6 +718,8 @@
 
         const currentIndex = allQuestions.findIndex(item => item.id === q);
         const currentTitle = currentIndex !== -1 ? allQuestions[currentIndex].title : q;
+        const category = categoryOf(categoryText, q);
+        if (category) document.getElementById('doc-meta').innerText = `${area.name} · ${category}`;
 
         document.getElementById('question-title').innerText = currentTitle;
         document.title = `${currentTitle} - 매일메일`;
@@ -839,7 +728,7 @@
         Prism.highlightAll();
         addCopyButtons();
 
-        // 본문을 그린 뒤에 메모 칸을 연다 (아래 메모 스크립트가 기다린다)
+        // 본문을 그린 뒤에 학습 기록을 연다 (아래 학습 기록 스크립트가 기다린다)
         resolveQuestion({ id: q, title: currentTitle });
 
         if (currentIndex !== -1) {
@@ -912,7 +801,8 @@
 
     document.getElementById('btn-share').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(window.location.href);
+        // 메모로 바로 가는 주소(#memo)는 빼고 질문 주소만 복사한다
+        await navigator.clipboard.writeText(location.href.split('#')[0]);
         showToast('질문 주소가 복사되었습니다.');
       } catch (e) {
         showToast('주소 복사에 실패했습니다.');
@@ -923,24 +813,51 @@
     loadContent();
   </script>
 
-  <!-- 내 메모: 저장·불러오기·GitHub 커밋은 질문 목록과 같은 코드(memo-core.js)를 쓴다.
-       로그인은 질문 목록에서 하고, 이 화면은 그 로그인 상태를 그대로 이어받는다. -->
+  <!-- 학습 기록: 이해도·별표·메모. 저장·불러오기·GitHub 커밋은 질문 목록과 같은 코드(memo-core.js)를 쓰고,
+       메모 보기·편집기는 memo-ui.js가 그린다. 로그인은 질문 목록에서 하고, 이 화면은 그 로그인 상태를 그대로 이어받는다. -->
   <script type="module">
     import {
       account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
-      STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground,
+      readStore, writeStore, removeStore,
+      STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground, saveSoon,
       fb, firebaseConfigured, loadFirebase,
-      createEditor, isEditorDirty, autosize, updateEditor, setEditorMode, resetEditor, saveMemo,
+      isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo,
     } from '../memo-core.js';
+    import { createMemoView, createMemoEditor, MOD } from '../memo-ui.js';
+
+    // 가져오기가 모두 성공해 이 모듈이 실행되기 시작했다는 표시 (../module-guard.js가 본다)
+    window.maeilModuleReady = true;
+
+    const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
+    const DRAFT_DELAY = 500;
 
     const els = {
-      section: document.getElementById('memo'),
+      study: document.getElementById('study'),
+      sync: document.getElementById('study-sync'),
       account: document.getElementById('memo-account'),
       saveState: document.getElementById('memo-save-state'),
-      body: document.getElementById('memo-body'),
+      levelControl: document.getElementById('level-control'),
+      levelOptions: [...document.querySelectorAll('#level-control .level-option')],
+      memoBlock: document.getElementById('memo'),
+      memoBody: document.getElementById('memo-body'),
+      memoEdit: document.getElementById('memo-edit'),
+      star: document.getElementById('star-toggle'),
+      starLabel: document.getElementById('star-label'),
+      docStatus: document.getElementById('doc-status'),
+      statusLevel: document.getElementById('status-level'),
+      statusMemo: document.getElementById('status-memo'),
+      confirm: document.getElementById('confirm-dialog'),
     };
+
     let question = null; // { id, title }
-    let editor = null;
+    let ready = false; // 학습 기록을 처음 그렸는지
+    let view = null; // 메모 보기 (createMemoView)
+    let editor = null; // 메모 편집기 (createMemoEditor)
+    let saving = false;
+    let draftTimer = 0;
+    let editorBase = ''; // 편집기를 열 때 저장돼 있던 메모 (그사이 다른 탭·기기에서 바뀌었는지 비교한다)
+
+    // ---------- 계정과 저장 상태 ----------
 
     function renderAccount(mode) {
       account.mode = mode;
@@ -949,12 +866,12 @@
       els.account.textContent = {
         unconfigured: '이 브라우저에만 저장돼요',
         unavailable: 'Firebase를 불러오지 못해 이 브라우저에만 저장해요',
-        guest: '이 브라우저에만 저장돼요 · 로그인은 질문 목록에서',
+        guest: '이 브라우저에만 저장돼요',
         user: `${name} 계정에 저장돼요`,
         error: '계정 기록을 불러오지 못했어요 · 바꾼 내용은 연결되면 저장해요',
         denied: '이 계정은 기록 동기화가 허용되지 않았어요 · 이 기기에만 보관돼요',
       }[mode];
-      els.account.dataset.state = ['error', 'unavailable', 'denied'].includes(mode) ? 'error' : '';
+      els.sync.dataset.state = mode === 'user' ? 'synced' : ['error', 'unavailable', 'denied'].includes(mode) ? 'error' : 'local';
     }
 
     function renderSaveState(state) {
@@ -1015,42 +932,547 @@
         if (store.busy && account.mode !== 'denied') flushInBackground();
       }
 
-      // 계정이 바뀌면 그 계정의 메모를 보여준다 (고치던 내용이 있으면 그대로 둔다)
-      if (editor) isEditorDirty(editor) ? updateEditor(editor) : resetEditor(editor);
+      // 계정이 바뀌면 그 계정의 기록을 보여준다 (고치던 메모가 있으면 그대로 둔다)
+      if (ready) renderRecords();
     }
 
-    function renderEditor() {
-      // 늘 펼쳐 두는 칸이라 닫기 버튼을 두지 않고, 글을 읽는 중에 커서를 가져가지 않는다
-      editor = createEditor(question.id, { closable: false });
-      els.body.replaceChildren(editor);
-      updateEditor(editor);
-      autosize(editor.querySelector('textarea'));
+    // ---------- 이해도 · 별표 · 머리의 학습 상태 ----------
+
+    const item = () => store.item(question.id);
+
+    function renderLevel() {
+      const level = store.level(question.id);
+      for (const option of els.levelOptions) {
+        const checked = option.dataset.level === level;
+        option.setAttribute('aria-checked', String(checked));
+        option.tabIndex = checked ? 0 : -1;
+      }
     }
 
-    function save() {
-      return saveMemo(editor, { title: question.title });
+    function setLevel(level) {
+      if (store.level(question.id) === level) return;
+      store.update(question.id, { level: level === 'new' ? null : level });
+      renderLevel();
+      renderStatus();
+      saveSoon();
+    }
+
+    function renderStar() {
+      const starred = Boolean(item().starred);
+      els.star.hidden = false;
+      els.star.setAttribute('aria-pressed', String(starred));
+      els.starLabel.textContent = starred ? '별표됨' : '별표';
+      els.star.title = starred ? '별표 해제' : '별표해 두고 질문 목록에서 모아 보기';
+    }
+
+    function toggleStar() {
+      const starred = !item().starred;
+      store.update(question.id, { starred: starred ? true : null });
+      renderStar();
+      saveSoon();
+      showToast(starred ? '별표했어요. 질문 목록에서 별표만 모아 볼 수 있어요.' : '별표를 해제했어요.');
+    }
+
+    // 제목 아래: 지금 이해도와 메모가 있는지. 누르면 학습 기록으로 내려간다.
+    // 처음 여는 질문은 거의 다 미학습이라 그때는 아무것도 보이지 않는다 (질문 목록과 같다)
+    function renderStatus() {
+      const level = store.level(question.id);
+      els.statusLevel.dataset.level = level;
+      els.statusLevel.textContent = LEVEL_LABELS[level];
+      els.statusLevel.hidden = level === 'new';
+      els.statusMemo.hidden = !item().memo;
+      els.docStatus.hidden = els.statusLevel.hidden && els.statusMemo.hidden;
+    }
+
+    // ---------- 메모 초안: 저장하지 않고 떠나도 이 기기에 남겨 두었다가 이어 쓴다 ----------
+
+    const draftKey = () => `maeil-memo-draft-${question.id}`;
+
+    function readDraft() {
+      const draft = readStore('localStorage', draftKey());
+      if (!draft || typeof draft.text !== 'string' || !draft.text.trim()) return null;
+      return normalizeMemo(draft.text) === (item().memo || '') ? null : draft;
+    }
+
+    function keepDraft(text) {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        if (!editor) return;
+        if (isEditorDirty() && text.trim()) {
+          const kept = writeStore('localStorage', draftKey(), { text, at: Date.now() });
+          editor.setDraftState(kept ? '초안 자동 보관됨' : '');
+        } else {
+          removeStore('localStorage', draftKey());
+          editor.setDraftState('');
+        }
+      }, DRAFT_DELAY);
+    }
+
+    function dropDraft() {
+      clearTimeout(draftTimer);
+      removeStore('localStorage', draftKey());
+    }
+
+    // ---------- 메모 보기 ----------
+
+    const dateFormat = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const shortDateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric' });
+
+    // 최근이면 '3분 전'처럼, 오래됐으면 날짜로 보여준다
+    function formatWhen(time) {
+      const minutes = Math.floor((Date.now() - time) / 60000);
+      if (minutes < 1) return '방금';
+      if (minutes < 60) return `${minutes}분 전`;
+      if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}시간 전`;
+      if (minutes < 7 * 24 * 60) return `${Math.floor(minutes / (24 * 60))}일 전`;
+      return shortDateFormat.format(time);
+    }
+
+    function smallButton(label, action, primary = false) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `btn btn-sm${primary ? ' btn-primary' : ''}`;
+      button.dataset.action = action;
+      button.textContent = label;
+      return button;
+    }
+
+    function draftNotice(draft) {
+      const box = document.createElement('div');
+      box.className = 'memo-draft';
+      box.setAttribute('role', 'status');
+      const text = document.createElement('p');
+      text.className = 'memo-draft-text';
+      text.style.margin = '0';
+      const strong = document.createElement('strong');
+      strong.textContent = '저장하지 않은 초안이 있어요';
+      text.append(strong, ` · ${formatWhen(draft.at)} 쓰던 내용`);
+      const buttons = document.createElement('div');
+      buttons.className = 'memo-draft-buttons';
+      buttons.append(smallButton('버리기', 'draft-discard'), smallButton('이어 쓰기', 'draft-resume', true));
+      box.append(text, buttons);
+      return box;
+    }
+
+    // 메모가 없으면 빈 글쓰기 칸처럼 보이는 버튼 하나를 둔다. 누르면 같은 자리에 같은 테두리의 편집기가 열린다
+    function emptyMemo() {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'memo-empty';
+      button.dataset.action = 'memo-write';
+      button.setAttribute('aria-label', '메모 쓰기');
+      button.innerHTML = `
+        <span class="memo-empty-text">핵심을 한 문장으로, 헷갈렸던 점과 나만의 예시까지 내 언어로 정리해 보세요</span>
+        <span class="memo-empty-hint">마크다운으로 쓸 수 있어요</span>`;
+      return button;
+    }
+
+    function memoFoot(memoAt) {
+      const foot = document.createElement('div');
+      foot.className = 'memo-foot';
+      if (memoAt) {
+        const when = document.createElement('time');
+        when.dateTime = new Date(memoAt).toISOString();
+        when.title = dateFormat.format(memoAt);
+        when.textContent = `${formatWhen(memoAt)} 저장`;
+        foot.append(when);
+      }
+      // 임시저장했거나 커밋에 실패해 아직 GitHub에 없는 메모 (실패는 저장할 때 알림으로 따로 알린다)
+      if (isUncommitted(question.id)) {
+        const warn = document.createElement('span');
+        warn.className = 'memo-foot-warn';
+        warn.textContent = '아직 GitHub에 올리지 않았어요';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'link-btn';
+        retry.dataset.action = 'memo-recommit';
+        retry.textContent = '올리기';
+        foot.append(warn, retry);
+      }
+      return foot;
+    }
+
+    function renderMemo({ fresh = false } = {}) {
+      view?.destroy();
+      view = null;
+      const memo = item().memo || '';
+      const nodes = [];
+      const draft = readDraft();
+      if (draft) nodes.push(draftNotice(draft));
+      if (memo) {
+        view = createMemoView(memo, { id: question.id });
+        if (fresh) view.el.classList.add('is-fresh');
+        nodes.push(view.el, memoFoot(item().memoAt));
+      } else {
+        nodes.push(emptyMemo());
+      }
+      els.memoBody.replaceChildren(...nodes);
+      els.memoEdit.hidden = !memo;
+    }
+
+    // ---------- 메모 편집 ----------
+
+    function isEditorDirty() {
+      return Boolean(editor) && normalizeMemo(editor.getText()) !== (item().memo || '');
+    }
+
+    function openEditor() {
+      if (editor) {
+        editor.focus();
+        return;
+      }
+      const memo = item().memo || '';
+      const draft = readDraft();
+      editorBase = memo;
+      conflictPending = false;
+      view?.destroy();
+      view = null;
+      editor = createMemoEditor({
+        text: draft ? draft.text : memo,
+        hasMemo: Boolean(memo),
+        commitNote: memoCommitNote(question.id),
+        draftRestored: Boolean(draft),
+        ariaLabel: `${question.id.toUpperCase()} 메모`,
+        canTempSave: canCommitMemo(),
+        onInput: keepDraft,
+        onSave: save,
+        onTempSave: tempSave,
+        onCancel: cancel,
+      });
+      els.memoBody.replaceChildren(editor.el);
+      els.memoEdit.hidden = true;
+      editor.mount();
+      editor.focus();
+      editor.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    // 편집기를 닫으면 포커스를 편집기를 열었던 자리(메모 고치기 버튼, 메모가 없으면 메모 쓰기 칸)로 돌린다.
+    // 그러지 않으면 편집기와 함께 포커스가 사라져, 키보드로 쓰는 사람은 페이지 처음부터 다시 찾아와야 한다
+    function closeEditor({ fresh = false } = {}) {
+      editor?.destroy();
+      editor = null;
+      renderMemo({ fresh });
+      renderStatus();
+      (item().memo ? els.memoEdit : els.memoBody.querySelector('.memo-empty'))?.focus({ preventScroll: true });
+    }
+
+    // 저장 버튼을 누른 직후 await 없이 saveMemo를 불러야 GitHub 연결 팝업이 막히지 않는다
+    // shortcut: Ctrl+Enter로 저장했는지 (저장 버튼이면 false)
+    async function save({ shortcut = false } = {}) {
+      if (tempSaving) await tempSaving; // 방금 누른 Ctrl+S가 끝난 뒤에 저장한다
+      if (!editor || saving) return;
+      const text = editor.getText();
+      const memo = item().memo || '';
+      if (!text.trim()) {
+        // 비우고 저장하면 지우는 것이므로 지울지 묻는다
+        if (memo) remove();
+        else closeEditor();
+        return;
+      }
+      // 바뀐 것이 없어도 아직 올리지 않은 메모(임시저장)면 저장 버튼으로 커밋한다
+      if (!isEditorDirty() && !isUncommitted(question.id)) {
+        dropDraft();
+        closeEditor();
+        return;
+      }
+      // Ctrl+Enter는 쓰다가 잘못 누르기 쉬우므로(Ctrl+S를 누른 손을 떼기 전에 Enter로 줄을 바꾸는 등) GitHub에 커밋할 때는 한 번 더 묻는다.
+      // 커밋은 저장소 기록에 남아 되돌리기 어렵지만, 커밋하지 않는 저장은 편집기를 다시 열어 이어 쓰면 되므로 묻지 않는다.
+      // 저장 버튼은 일부러 누르는 것이라 묻지 않는다. 확인 창의 '커밋'을 누른 직후라 GitHub 연결 팝업은 막히지 않는다
+      if (shortcut && canCommitMemo() && !(await confirmCommit())) return;
+      // 기록이 낡았을 때만 기다린다. 대개는 기다리지 않고 바로 saveMemo를 부른다 (GitHub 연결 팝업)
+      if (needsConflictCheck() && !(await confirmNoConflict(text))) return;
+      saving = true;
+      editor.setBusy(true);
+      const result = await saveMemo(question.id, text, { title: question.title });
+      saving = false;
+      if (result.saved) dropDraft();
+      closeEditor({ fresh: true });
+    }
+
+    // 임시저장 (Ctrl+S, 터치 기기의 임시저장 버튼): GitHub에 커밋하지 않고 계정(또는 이 브라우저)에만 저장하고, 편집기는 열어 둔 채 계속 쓴다.
+    // 습관처럼 자주 누르는 키라서 쓰는 중에 막지 않는다 (작성 칸을 잠그지 않는다). 그사이 더 쓴 글은 다음 저장 때 들어간다
+    let tempSaving = null;
+
+    function tempSave() {
+      if (!editor || saving || tempSaving) return;
+      const state = () => (canCommitMemo() ? '임시저장됨 · 아직 커밋 전' : '저장됨');
+      const text = editor.getText();
+      if (!text.trim()) return; // 빈 글을 임시저장하면 메모를 지우게 되므로 하지 않는다
+      if (!isEditorDirty()) {
+        editor.setDraftState(isUncommitted(question.id) || !canCommitMemo() ? state() : '바뀐 내용 없음');
+        return;
+      }
+      tempSaving = (async () => {
+        if (needsConflictCheck() && !(await confirmNoConflict(text))) return;
+        editor?.setDraftState('저장 중…');
+        const result = await saveMemo(question.id, text, { title: question.title, commit: false });
+        if (!editor) return;
+        if (result.saved) {
+          editorBase = item().memo || '';
+          // 저장한 뒤에 더 쓰지 않았으면 초안은 필요 없다 (더 썼으면 초안이 그 글을 계속 보관한다)
+          if (!isEditorDirty()) dropDraft();
+          editor.setDraftState(state());
+          editor.setHasMemo(true);
+        } else {
+          editor.setDraftState('임시저장하지 못했어요');
+        }
+        renderStatus();
+      })().finally(() => {
+        tempSaving = null;
+      });
+    }
+
+    async function confirmCommit() {
+      const yes = await confirmDialog({
+        title: 'GitHub에 커밋할까요?',
+        body: `${store.memoRepo.fullName}의 ${question.id}.md로 커밋하고 편집기를 닫아요. 커밋하지 않고 저장만 하려면 ${MOD}+S로 임시저장하세요.`,
+        yes: '커밋',
+        no: '계속 쓰기',
+        tone: 'primary',
+      });
+      if (!yes) {
+        editor?.focus({ keepSelection: true });
+        return false;
+      }
+      return Boolean(editor);
+    }
+
+    // 다른 탭이 기록을 썼거나(watchOtherTabs가 loadedAt을 0으로 만든다) 기록을 읽은 지 오래됐으면, 저장 직전에 최신 기록을 읽는다.
+    // 그사이 다른 곳에서 이 메모를 저장했으면 덮어쓸지 묻는다
+    // 한 번 알린 충돌은 '덮어쓰기'를 고를 때까지 저장할 때마다 다시 묻는다
+    let conflictPending = false;
+    const isStale = () => Date.now() - store.loadedAt >= STALE_AFTER && store.canReload;
+    const needsConflictCheck = () => conflictPending || isStale();
+
+    async function confirmNoConflict(text) {
+      if (isStale()) {
+        saving = true;
+        editor.setBusy(true);
+        try {
+          await store.refresh({ fresh: true });
+        } catch (err) {
+          console.error(err); // 읽지 못하면 확인 없이 저장한다 (지금까지와 같다)
+        }
+        saving = false;
+        editor?.setBusy(false);
+        renderLevel();
+        renderStar();
+        renderStatus();
+      }
+      const latest = item().memo || '';
+      if (latest === editorBase || latest === normalizeMemo(text)) {
+        conflictPending = false;
+        return true;
+      }
+      const overwrite = await confirmDialog({
+        title: '다른 곳에서 이 메모가 바뀌었어요',
+        body: '편집기를 연 뒤 다른 탭이나 기기에서 이 메모를 저장했어요. 지금 쓴 내용으로 덮어쓸까요?',
+        yes: '덮어쓰기',
+        no: '계속 쓰기',
+      });
+      if (!overwrite) {
+        conflictPending = true;
+        editor?.focus({ keepSelection: true });
+        return false;
+      }
+      conflictPending = false;
+      editorBase = latest;
+      return Boolean(editor);
+    }
+
+    async function cancel() {
+      if (!editor || saving) return;
+      if (isEditorDirty()) {
+        const discard = await confirmDialog({
+          title: '쓰던 내용을 버릴까요?',
+          body: '저장하지 않은 변경은 사라져요.',
+          yes: '버리기',
+          no: '계속 쓰기',
+        });
+        if (!discard) {
+          editor?.focus({ keepSelection: true });
+          return;
+        }
+      }
+      dropDraft();
+      closeEditor();
+    }
+
+    // 메모 지우기: 작성 칸을 비운 채 저장하면 묻는다 (따로 삭제 버튼은 없다).
+    // GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다
+    async function remove() {
+      if (!editor || saving) return;
+      const yes = await confirmDialog({
+        title: '메모를 삭제할까요?',
+        body: canCommitMemo()
+          ? `이 질문의 메모가 지워지고, ${store.memoRepo.fullName}의 ${question.id}.md 파일도 삭제돼요. 지난 커밋 기록은 GitHub에 남아요.`
+          : '이 질문의 메모가 지워지고 되돌릴 수 없어요.',
+        yes: '삭제',
+        no: '취소',
+      });
+      if (!yes) {
+        editor?.focus({ keepSelection: true });
+        return;
+      }
+      saving = true;
+      editor?.setBusy(true);
+      await saveMemo(question.id, '', { title: question.title });
+      saving = false;
+      dropDraft();
+      closeEditor();
+    }
+
+    // GitHub 커밋만 실패했던 메모를 다시 올린다
+    function recommit() {
+      const memo = item().memo || '';
+      if (!memo) return;
+      saveMemo(question.id, memo, { title: question.title }).then(() => renderMemo());
+    }
+
+    // ---------- 확인 창 ----------
+
+    // 확인 창의 버튼 사이를 화살표로도 오간다 (운영체제의 확인 창처럼). 왼쪽·위는 앞 버튼, 오른쪽·아래는 다음 버튼
+    function bindDialogArrowKeys(dialog) {
+      dialog.addEventListener('keydown', (e) => {
+        const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+        if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        const buttons = [...dialog.querySelectorAll('.confirm-buttons button')];
+        const index = buttons.indexOf(document.activeElement);
+        if (index === -1) return;
+        e.preventDefault();
+        buttons[(index + step + buttons.length) % buttons.length].focus();
+      });
+    }
+
+    bindDialogArrowKeys(els.confirm);
+
+    // tone: '예' 버튼 색. 지우거나 버리는 일은 빨강(danger), 저장처럼 해가 없는 일은 초록(primary)
+    function confirmDialog({ title, body, yes, no, tone = 'danger' }) {
+      const dialog = els.confirm;
+      dialog.querySelector('#confirm-title').textContent = title;
+      dialog.querySelector('#confirm-body').textContent = body;
+      const yesButton = dialog.querySelector('[data-answer="yes"]');
+      yesButton.textContent = yes;
+      yesButton.className = `btn btn-${tone}`;
+      dialog.querySelector('[data-answer="no"]').textContent = no;
+      return new Promise((resolve) => {
+        const finish = (answer) => {
+          dialog.removeEventListener('click', onClick);
+          dialog.removeEventListener('cancel', onCancel);
+          dialog.close();
+          resolve(answer);
+        };
+        const onClick = (e) => {
+          const answer = e.target.closest('[data-answer]')?.dataset.answer;
+          if (answer) {
+            finish(answer === 'yes');
+            return;
+          }
+          // 창 바깥(배경)을 누르면 닫는다
+          const rect = dialog.getBoundingClientRect();
+          const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+          if (!inside) finish(false);
+        };
+        const onCancel = (e) => {
+          e.preventDefault();
+          finish(false);
+        };
+        dialog.addEventListener('click', onClick);
+        dialog.addEventListener('cancel', onCancel);
+        dialog.showModal();
+      });
+    }
+
+    // ---------- 전체 그리기 · 다시 불러오기 ----------
+
+    // 기록을 다시 그린다. 고치던 메모가 있으면 편집기는 그대로 둔다
+    function renderRecords() {
+      renderLevel();
+      renderStar();
+      renderStatus();
+      if (!editor) renderMemo();
+      else if (!isEditorDirty()) {
+        // 고치지 않은 편집기는 새로 읽은 메모로 바꾸고, 이것을 고치기 시작한 메모로 삼는다
+        editorBase = item().memo || '';
+        editor.setText(editorBase);
+      }
+    }
+
+    // 다시 불러온 기록으로 화면을 고친다. 고치던 메모가 있거나 쓰는 중이면 다음 기회로 미룬다.
+    // fresh가 아니면 탭 단위 캐시가 있을 때 그것을 읽는다 (질문 목록에서 저장한 기록도 캐시에 들어 있다)
+    async function reloadRecords({ fresh = true } = {}) {
+      if (!ready || account.mode === 'denied' || !store.canReload || isEditorDirty()) return;
+      try {
+        await store.refresh({ fresh });
+      } catch (err) {
+        console.error(err);
+        return;
+      }
+      // 캐시를 읽은 것만으로는 Firestore에 다시 닿았는지 알 수 없다
+      if (account.mode === 'error' && fresh) {
+        renderAccount('user');
+        if (store.busy) flushInBackground();
+      }
+      renderRecords();
+    }
+
+    // 다른 기기나 다른 탭에서 바꾼 내용을 보도록, 오래 자리를 비웠거나 다른 탭이 기록을 썼으면 돌아올 때 다시 읽는다
+    async function refreshIfStale() {
+      if (Date.now() - store.loadedAt < STALE_AFTER) return;
+      await reloadRecords();
     }
 
     function bindEvents() {
-      els.body.addEventListener('click', (e) => {
+      els.levelControl.addEventListener('click', (e) => {
+        const option = e.target.closest('.level-option');
+        if (option) setLevel(option.dataset.level);
+      });
+
+      // 라디오 묶음처럼 화살표로 옮기며 고른다
+      els.levelControl.addEventListener('keydown', (e) => {
+        const index = els.levelOptions.indexOf(document.activeElement);
+        if (index === -1) return;
+        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        const next = els.levelOptions[(index + step + els.levelOptions.length) % els.levelOptions.length];
+        setLevel(next.dataset.level);
+        next.focus();
+      });
+
+      els.star.addEventListener('click', toggleStar);
+      els.memoEdit.addEventListener('click', openEditor);
+
+      els.memoBody.addEventListener('click', (e) => {
         const action = e.target.closest('[data-action]')?.dataset.action;
-        if (action === 'memo-save') save();
-        else if (action === 'memo-write') setEditorMode(editor, 'write');
-        else if (action === 'memo-preview') setEditorMode(editor, 'preview');
-      });
-
-      els.body.addEventListener('input', (e) => {
-        if (!e.target.matches('.memo-editor textarea')) return;
-        autosize(e.target);
-        updateEditor(editor);
-      });
-
-      els.body.addEventListener('keydown', (e) => {
-        if (!e.target.matches('.memo-editor textarea')) return;
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          if (isEditorDirty(editor)) save();
+        if (action === 'memo-write' || action === 'draft-resume') openEditor();
+        else if (action === 'memo-recommit') recommit();
+        else if (action === 'draft-discard') {
+          dropDraft();
+          renderMemo();
         }
+      });
+
+      // 제목 아래 상태를 누르면 부드럽게 내려간다 (주소에 #memo 등을 남겨 새로고침해도 그 자리로 온다)
+      els.docStatus.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href^="#"]');
+        if (!link) return;
+        e.preventDefault();
+        history.replaceState(null, '', link.hash);
+        document.querySelector(link.hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+
+      // 질문을 옮기기 전에 아직 쓰지 않은 변경을 먼저 저장한다 (저장이 실패하는 중이면 기다리지 않는다. 변경은 이 기기에 보관돼 있다)
+      document.addEventListener('click', async (e) => {
+        const link = e.target.closest('a.q-link');
+        if (!link || !store.busy || saveErrorShown || account.mode === 'denied' || isEditorDirty()) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        await Promise.race([
+          store.flush().catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+        location.href = link.href;
       });
 
       document.addEventListener('visibilitychange', () => {
@@ -1063,7 +1485,7 @@
         if (document.visibilityState === 'visible') refreshIfStale();
       });
 
-      // 뒤로가기·앞으로가기로 돌아오면(bfcache) 떠날 때 상태 그대로 보이므로, 그사이 다른 화면에서 저장한 메모를 반영한다
+      // 뒤로가기·앞으로가기로 돌아오면(bfcache) 떠날 때 상태 그대로 보이므로, 그사이 다른 화면에서 저장한 기록을 반영한다
       window.addEventListener('pageshow', (e) => {
         if (e.persisted) reloadRecords({ fresh: false });
       });
@@ -1071,51 +1493,38 @@
       // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모와
       // 저장 공간이 부족해 이 기기에도 보관하지 못한 변경뿐이다
       window.addEventListener('beforeunload', (e) => {
-        if (isEditorDirty(editor) || (store.busy && !store.pendingKept)) {
+        if (isEditorDirty() || (store.busy && !store.pendingKept)) {
           e.preventDefault();
           e.returnValue = '';
         }
       });
     }
 
-    // 다시 불러온 기록으로 편집기를 고친다. 고치던 메모가 있거나 쓰는 중이면 다음 기회로 미룬다.
-    // fresh가 아니면 탭 단위 캐시가 있을 때 그것을 읽는다 (질문 목록에서 저장한 기록도 캐시에 들어 있다)
-    async function reloadRecords({ fresh = true } = {}) {
-      if (!editor || account.mode === 'denied' || !store.canReload || isEditorDirty(editor)) return;
-      try {
-        await store.refresh({ fresh });
-      } catch (err) {
-        console.error(err);
-        return;
-      }
-      // 캐시를 읽은 것만으로는 Firestore에 다시 닿았는지 알 수 없다
-      if (account.mode === 'error' && fresh) {
-        renderAccount('user');
-        if (store.busy) flushInBackground();
-      }
-      resetEditor(editor);
+    // 질문 목록의 메모 한 줄(#memo)이나 제목 아래 상태(#study)로 들어왔으면 그 자리로 내려간다
+    function scrollToHash() {
+      const target = { '#memo': els.memoBlock, '#study': els.study }[location.hash];
+      if (!target) return;
+      if (location.hash === '#memo') view?.expand(); // 메모를 보러 왔으니 다 펼쳐 둔다
+      requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
     }
 
-    // 다른 기기나 다른 탭에서 바꾼 내용을 보도록, 오래 자리를 비웠거나 다른 탭이 기록을 썼으면 돌아올 때 다시 읽는다
-    async function refreshIfStale() {
-      if (Date.now() - store.loadedAt < STALE_AFTER) return;
-      await reloadRecords();
-    }
-
-    // 본문과 기록을 함께 불러온다. 본문을 못 불러오면(없는 질문) 메모 칸을 열지 않는다
+    // 본문과 기록을 함께 불러온다. 본문을 못 불러오면(없는 질문) 학습 기록을 열지 않는다
     async function main() {
       const accountReady = initAccount();
       question = await window.questionReady;
-      els.section.hidden = false;
+      els.study.hidden = false;
       try {
         await accountReady;
       } catch (err) {
         console.error(err);
-        els.body.querySelector('.memo-loading').textContent = '메모를 불러오지 못했어요. 잠시 후 새로고침해주세요.';
+        els.memoBody.querySelector('.memo-loading').textContent = '기록을 불러오지 못했어요. 잠시 후 새로고침해주세요.';
         return;
       }
-      renderEditor();
+      ready = true;
+      renderRecords();
       bindEvents();
+      await view?.ready;
+      scrollToHash();
     }
 
     main();

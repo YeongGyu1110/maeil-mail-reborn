@@ -1,13 +1,18 @@
-// 메모 저장·편집 공용 코드: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
-// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 마크다운 미리보기, 메모 편집기를 담는다.
+// 학습 기록 공용 코드: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
+// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 메모 마크다운 그리기, 메모 저장을 담는다.
+// 메모 보기·편집기 화면은 memo-ui.js가 맡는다 (질문 화면만 쓴다).
 // 두 화면이 같은 저장 코드와 같은 브라우저 저장소 키를 쓰므로, 한 화면에서 저장한 기록을 다른 화면이 그대로 이어 읽는다.
 import { firebaseConfig } from './firebase-config.js';
 
 const FIREBASE_VERSION = '10.14.1';
 export const MEMO_MAX = 3000;
+// 저장할 메모의 모양: 앞의 빈 줄과 끝의 공백만 걷어 낸다. 첫 줄의 들여쓰기(" - 항목", 들여쓴 코드)는 글의 일부라 남긴다.
+// 저장된 메모와 편집 중인 글을 비교할 때도 이 모양으로 맞춘다
+export const normalizeMemo = (text) => text.replace(/^(?:[ \t]*\n)+/, '').trimEnd();
 // 메모는 기본 문서와 따로 묶음 문서 4개(users/{uid}/memos/0~3)에 나눠 담는다. 개수를 바꾸면 firestore.rules도 같이 바꾼다
 const MEMO_SHARDS = 4;
-const MEMO_FIELDS = ['memo', 'memoAt'];
+// memoUncommitted: 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모(임시저장, 커밋 실패)면 true
+const MEMO_FIELDS = ['memo', 'memoAt', 'memoUncommitted'];
 const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
 const RETRY_MAX = 10 * 60 * 1000;
 const CACHE_TTL = 10 * 60 * 1000; // 화면을 오갈 때마다 Firestore를 다시 읽지 않도록 탭 단위 캐시
@@ -346,7 +351,8 @@ export const SAVE_STATE_TEXT = {
 const isPermanentError = (err) => ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(err?.code);
 
 function saveErrorMessage(err) {
-  if (err?.code === 'storage-full') return '브라우저 저장 공간이 부족해 저장하지 못했어요. 로그인하면 계정에 저장할 수 있어요.';
+  // 동기화는 소유자 계정만 되므로(firestore.rules) 로그인하라고 권하지 않는다
+  if (err?.code === 'storage-full') return '브라우저 저장 공간이 부족해 저장하지 못했어요. 브라우저의 사이트 데이터를 정리한 뒤 다시 저장해주세요.';
   if (!store.pendingKept) return '저장하지 못했고, 브라우저 저장 공간이 부족해 이 기기에도 보관하지 못했어요. 저장될 때까지 페이지를 닫지 말아주세요.';
   if (err?.code === 'resource-exhausted') return '오늘 저장 한도를 넘었어요. 바꾼 내용은 이 기기에 보관했다가 한도가 풀리면 저장할게요.';
   if (isPermanentError(err)) return `저장이 거부됐어요(${err.code}). 바꾼 내용은 이 기기에 보관해 두었어요.`;
@@ -486,6 +492,33 @@ async function commitMemo(token, id, text, title) {
   }
 }
 
+// 메모를 지우면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다 (잔디도 그대로).
+// 파일이 없으면(임시저장만 하고 올린 적 없는 메모) 할 일이 없으므로 false를 돌려준다
+async function deleteMemoFile(token, id, title) {
+  const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
+
+  for (let attempt = 0; ; attempt++) {
+    let sha;
+    try {
+      ({ sha } = await githubApi(token, path));
+    } catch (err) {
+      if (err.status === 404) return false;
+      throw err;
+    }
+
+    try {
+      await githubApi(token, path, {
+        method: 'DELETE',
+        body: { message: `메모 삭제: ${id.toUpperCase()} ${title}`.trim(), sha },
+      });
+      return true;
+    } catch (err) {
+      // 다른 기기에서 그사이 커밋해 sha가 바뀌었으면 한 번 더 시도한다
+      if (err.status !== 409 || attempt > 0) throw err;
+    }
+  }
+}
+
 function githubErrorMessage(err) {
   if (err.code === 'github/unauthorized') return 'GitHub 연결이 만료됐어요. 다시 저장하면 다시 연결해요.';
   if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return 'GitHub 연결을 취소했어요.';
@@ -500,7 +533,7 @@ const canCommit = () => (account.mode === 'user' || account.mode === 'error') &&
 
 // ---------- 메모 마크다운 ----------
 // 질문 화면과 같은 파일·버전·integrity를 쓴다 (브라우저 캐시를 같이 쓰고, CDN 파일이 바뀌면 실행하지 않는다).
-// 질문 목록에서는 미리보기를 처음 열 때만 불러온다. 질문 화면은 본문을 그리려고 이미 불러와 두었으니 다시 받지 않는다.
+// 질문 화면은 본문을 그리려고 이미 불러와 두었으니 다시 받지 않는다 (페이지에 없을 때만 받는다).
 // jsx는 javascript 뒤, tsx는 jsx와 typescript 뒤에 와야 한다.
 const MARKDOWN_SCRIPTS = [
   ['https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js', 'sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+'],
@@ -595,188 +628,102 @@ export function renderMarkdown(container, text) {
   window.Prism?.highlightAllUnder?.(container);
 }
 
-function previewNote(text) {
-  const note = document.createElement('p');
-  note.className = 'memo-preview-note';
-  note.textContent = text;
-  return note;
-}
+// ---------- 학습 수준·별표 저장 ----------
 
-let previewRuns = 0;
+const LEVEL_SAVE_DELAY = 1200; // 학습 수준·별표 변경을 모아 한 번에 쓴다
 
-async function renderMemoPreview(editor) {
-  const preview = editor.querySelector('.memo-preview');
-  if (preview.hidden) return;
-  const text = editor.querySelector('textarea').value;
-  if (!text.trim()) {
-    preview.replaceChildren(previewNote('미리 볼 내용이 없어요.'));
+// store.update로 바꾼 학습 수준·별표를 곧 저장한다
+export function saveSoon() {
+  // 거부된 계정은 보내 봐야 거부되니 요청하지 않는다 (변경은 이 기기에 보관돼 있다)
+  if (account.mode === 'denied') {
+    hooks.renderSaveState('held');
     return;
   }
-
-  const run = String(++previewRuns);
-  preview.dataset.run = run;
-  if (!window.marked) preview.replaceChildren(previewNote('미리보기를 준비하는 중…'));
-  try {
-    await loadMarkdown();
-  } catch (err) {
-    console.error(err);
-    if (preview.dataset.run === run) preview.replaceChildren(previewNote('미리보기를 불러오지 못했어요. 연결을 확인하고 미리보기를 다시 눌러주세요.'));
-    return;
-  }
-  // 불러오는 사이 작성으로 돌아갔거나 더 나중에 그리기 시작했으면 그대로 둔다
-  if (preview.hidden || preview.dataset.run !== run) return;
-  try {
-    renderMarkdown(preview, text);
-  } catch (err) {
-    console.error(err);
-    preview.replaceChildren(previewNote('이 메모는 미리보기로 그리지 못했어요.'));
-  }
+  hooks.renderSaveState('pending');
+  clearTimeout(store.timer);
+  // 이 브라우저에만 저장할 때는 비용이 없으니 바로 쓴다
+  if (store.backend === localBackend) flushInBackground();
+  else store.timer = setTimeout(flushInBackground, LEVEL_SAVE_DELAY);
 }
 
-// ---------- 메모 편집기 ----------
-// 편집기 하나가 질문 하나(data-id)의 메모를 고친다. 놓을 자리와 열고 닫기는 각 화면이 정한다.
-// 버튼은 data-action(memo-write, memo-preview, memo-save, memo-close)만 달려 있고, 누를 때 할 일도 각 화면이 연결한다.
+// ---------- 메모 저장 ----------
+// 편집기 모양은 질문 화면이 정하고, 여기서는 글자를 받아 기록에 쓰고 GitHub에 커밋하는 일만 한다.
 
-export const uncommitted = new Set(); // Firestore에는 저장했지만 GitHub 커밋에 실패한 메모
+// 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모인지 (임시저장했거나 커밋에 실패했다).
+// 메모와 함께 계정에 남으므로 새로고침하거나 다른 기기에서 열어도 알 수 있다
+export const isUncommitted = (id) => store.item(id).memoUncommitted === true;
 
-const EDITOR_HTML = `
-  <div class="memo-tabs" role="group" aria-label="메모 보기">
-    <button type="button" class="memo-tab" data-action="memo-write" aria-pressed="true">작성</button>
-    <button type="button" class="memo-tab" data-action="memo-preview" aria-pressed="false">미리보기</button>
-    <span class="memo-tabs-hint">마크다운 사용 가능</span>
-  </div>
-  <textarea placeholder="이 질문을 내 언어로 정리해보세요. 핵심 키워드, 헷갈렸던 점, 나만의 예시 등"></textarea>
-  <div class="memo-preview memo-md" hidden></div>
-  <div class="memo-footer">
-    <div class="memo-info">
-      <span class="memo-count"></span>
-      <span class="memo-saved"></span>
-      <span class="memo-github"></span>
-    </div>
-    <div class="memo-buttons">
-      <button type="button" class="btn btn-sm" data-action="memo-close">닫기</button>
-      <button type="button" class="btn btn-sm btn-primary" data-action="memo-save">저장</button>
-    </div>
-  </div>`;
+// 저장할 때 GitHub에도 커밋하는지
+export const canCommitMemo = canCommit;
 
-// closable이 아니면 닫기 버튼을 두지 않는다 (늘 펼쳐 두는 편집기)
-export function createEditor(id, { closable = true } = {}) {
-  const editor = document.createElement('div');
-  editor.className = 'memo-editor';
-  editor.dataset.id = id;
-  editor.innerHTML = EDITOR_HTML;
-  if (!closable) editor.querySelector('[data-action="memo-close"]').remove();
-  const textarea = editor.querySelector('textarea');
-  textarea.maxLength = MEMO_MAX;
-  textarea.value = store.item(id).memo || '';
-  textarea.setAttribute('aria-label', `${id.toUpperCase()} 메모`);
-  return editor;
+// 편집기 꼬리에 보여줄 GitHub 안내 (커밋하지 않으면 빈 문자열)
+export function memoCommitNote(id) {
+  if (!canCommit()) return '';
+  return `저장하면 ${store.memoRepo.fullName}의 ${id}.md로 커밋돼요`;
 }
 
-// 고친 내용이 있거나, 저장은 됐지만 GitHub 커밋이 실패해 다시 올려야 하는 상태
-export function isEditorDirty(editor) {
-  const id = editor.dataset.id;
-  const text = editor.querySelector('textarea').value.trim();
-  return text !== (store.item(id).memo || '') || (Boolean(text) && uncommitted.has(id));
-}
-
-// 미리보기 중(숨긴 칸)에는 높이를 잴 수 없으니 작성으로 돌아올 때 잰다
-export function autosize(textarea) {
-  if (textarea.hidden) return;
-  textarea.style.height = 'auto';
-  textarea.style.height = `${textarea.scrollHeight + 2}px`;
-}
-
-const dateFormat = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-export function updateEditor(editor) {
-  const id = editor.dataset.id;
-  const item = store.item(id);
-  editor.querySelector('.memo-count').textContent = `${editor.querySelector('textarea').value.length} / ${MEMO_MAX}`;
-  editor.querySelector('.memo-saved').textContent = item.memoAt
-    ? `마지막 저장 ${dateFormat.format(item.memoAt)}`
-    : '';
-
-  const github = editor.querySelector('.memo-github');
-  const failed = uncommitted.has(id);
-  github.classList.toggle('is-error', failed);
-  github.textContent = !canCommit() || !editor.querySelector('textarea').value.trim() ? ''
-    : failed ? 'GitHub에 아직 올리지 못했어요 · 다시 저장해주세요'
-    : `저장하면 ${store.memoRepo.fullName}의 ${id}.md로 커밋돼요`;
-
-  editor.querySelector('[data-action="memo-save"]').disabled = !isEditorDirty(editor);
-}
-
-export function setEditorMode(editor, mode) {
-  const textarea = editor.querySelector('textarea');
-  const preview = editor.querySelector('.memo-preview');
-  textarea.hidden = mode === 'preview';
-  preview.hidden = mode !== 'preview';
-  for (const tab of editor.querySelectorAll('.memo-tab')) {
-    tab.setAttribute('aria-pressed', String(tab.dataset.action === `memo-${mode}`));
-  }
-  if (mode === 'preview') {
-    renderMemoPreview(editor);
-  } else {
-    autosize(textarea);
-    textarea.focus();
-  }
-}
-
-// 다시 불러온 기록으로 편집기 내용을 바꾼다 (고치던 내용이 없을 때만 부른다)
-export function resetEditor(editor) {
-  const textarea = editor.querySelector('textarea');
-  textarea.value = store.item(editor.dataset.id).memo || '';
-  autosize(textarea);
-  updateEditor(editor);
-  renderMemoPreview(editor); // 미리보기 중이면 새 내용으로 다시 그린다
-}
-
-// title은 GitHub 커밋 메시지에 붙일 질문 제목, onChange는 기록이 바뀐 직후 화면을 고칠 때 부른다
-export async function saveMemo(editor, { title = '', onChange = () => {} } = {}) {
-  const id = editor.dataset.id;
-  const textarea = editor.querySelector('textarea');
-  const saveButton = editor.querySelector('[data-action="memo-save"]');
-  const text = textarea.value.trim();
+// 메모를 저장한다. 빈 글이면 메모를 지우고, GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다.
+// commit이 false면 임시저장이다: 계정(또는 이 브라우저)에만 쓰고 GitHub에는 올리지 않으며, 알림도 띄우지 않는다
+// (습관처럼 자주 누르는 Ctrl+S라 화면이 시끄럽지 않게, 결과는 편집기가 보여준다). 커밋할 수 있는 계정이면 올리지 않았다고 표시해 둔다.
+// GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후 await 없이 불러야 한다.
+// title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지,
+// committed는 GitHub에 올렸는지(올리지 않았으면 null)다. 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
+export async function saveMemo(id, rawText, { title = '', commit = true } = {}) {
+  const text = normalizeMemo(rawText);
   const changed = text !== (store.item(id).memo || '');
-  // 메모를 지울 때는 GitHub 파일을 그대로 둔다 (학습 기록으로 남긴다)
-  const shouldCommit = Boolean(text) && canCommit() && (changed || uncommitted.has(id));
+  const committable = Boolean(text) && canCommit();
+  const shouldCommit = commit && committable && (changed || isUncommitted(id));
+  const shouldRemoveFile = commit && !text && changed && canCommit();
+  if (!changed && !shouldCommit) return { saved: true, changed: false, committed: null };
 
-  textarea.value = text;
-  saveButton.disabled = true;
-  saveButton.textContent = '저장 중…';
   if (changed) {
-    store.update(id, text ? { memo: text, memoAt: Date.now() } : { memo: null, memoAt: null });
-    onChange(id);
+    // 커밋할 때는 성공했다고 보고 표시를 지워 둔다 (실패하면 아래에서 다시 켠다). 임시저장이면 켠다
+    const memoUncommitted = !commit && committable ? true : null;
+    store.update(id, text ? { memo: text, memoAt: Date.now(), memoUncommitted } : { memo: null, memoAt: null, memoUncommitted: null });
     hooks.renderSaveState('pending');
   }
 
-  // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋을 함께 시작한다
-  const [saved, committed] = await Promise.allSettled([
-    changed ? store.flush() : Promise.resolve(),
-    shouldCommit ? getGithubToken().then((token) => commitMemo(token, id, text, title)) : Promise.resolve(),
-  ]);
+  // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋(또는 파일 삭제)을 함께 시작한다
+  let github = Promise.resolve();
+  if (shouldCommit) github = getGithubToken().then((token) => commitMemo(token, id, text, title));
+  else if (shouldRemoveFile) github = getGithubToken().then((token) => deleteMemoFile(token, id, title));
+  const [saved, committed] = await Promise.allSettled([changed ? store.flush() : Promise.resolve(), github]);
 
+  // 커밋 결과를 계정에 남긴다 (바뀔 때만 쓴다)
+  let flagged = Promise.resolve();
   if (shouldCommit) {
-    if (committed.status === 'fulfilled') uncommitted.delete(id);
-    else uncommitted.add(id);
+    const pending = committed.status === 'rejected';
+    if (pending !== isUncommitted(id)) {
+      store.update(id, { memoUncommitted: pending || null });
+      flagged = store.flush();
+    }
   }
+  const [flagResult] = await Promise.allSettled([flagged]);
 
   if (changed && saved.status === 'fulfilled') hooks.renderSaveState(store.busy ? 'pending' : 'saved');
 
-  if (saved.status === 'rejected') {
+  if (saved.status === 'rejected' || flagResult.status === 'rejected') {
     saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
-    handleSaveError(saved.reason);
+    handleSaveError(saved.status === 'rejected' ? saved.reason : flagResult.reason);
   } else if (committed.status === 'rejected') {
     console.error(committed.reason);
-    hooks.toast(`메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
+    // 지운 메모는 다시 올릴 자리가 없으므로, GitHub 파일을 못 지우면 알리기만 한다 (저장소에 옛 내용이 남는다)
+    hooks.toast(shouldRemoveFile
+      ? `메모는 지웠지만 GitHub의 ${id}.md 파일을 지우지 못했어요. ${githubErrorMessage(committed.reason)}`
+      : `메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
   } else {
     resetSaveErrors();
-    hooks.toast(shouldCommit
-      ? `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`
-      : text ? '메모를 저장했어요.' : '메모를 지웠어요.');
+    if (commit) {
+      let message = text ? '메모를 저장했어요.' : '메모를 지웠어요.';
+      if (shouldCommit) message = `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`;
+      else if (shouldRemoveFile && committed.value) message = `메모를 지우고 ${store.memoRepo.fullName}의 ${id}.md 파일도 삭제했어요.`;
+      hooks.toast(message);
+    }
   }
 
-  saveButton.textContent = '저장';
-  updateEditor(editor);
+  return {
+    saved: saved.status === 'fulfilled',
+    changed,
+    committed: shouldCommit || shouldRemoveFile ? committed.status === 'fulfilled' : null,
+  };
 }
