@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.maeilmail.app",
+      "sha256_cert_fingerprints": [
+        "2C:24:BD:AC:7D:83:F5:42:AF:D1:6A:F9:50:2A:5A:9B:24:6E:08:A3:4D:9D:55:B3:EE:D8:7A:36:70:61:04:F5"
+      ]
+    }
+  }
+]
