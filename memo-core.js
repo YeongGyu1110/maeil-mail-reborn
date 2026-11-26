@@ -83,6 +83,14 @@ export function cleanDraft(draft) {
   return { text: draft.text, at: Number(draft.at) || 0, base: typeof draft.base === 'string' ? draft.base : '' };
 }
 
+// 계정에 저장할 수 있는 초안인지 (firestore.rules의 초안 규칙과 같다: 글과 기준 글은 MEMO_MAX자까지, 시각은 정수).
+// 규칙에 어긋난 초안이 저장 대기열에 들어가면 같은 쓰기로 묶인 다른 변경까지 모두 거부되어 저장이 멈추므로, 대기열에 넣기 전에 거른다.
+// 글자 수는 규칙(문자 수)보다 엄격하게 UTF-16 단위(length)로 센다 (편집기의 글자 수 제한과 같은 단위)
+export const isStorableDraft = (draft) => Boolean(draft)
+  && typeof draft.text === 'string' && draft.text.length <= MEMO_MAX
+  && typeof draft.base === 'string' && draft.base.length <= MEMO_MAX
+  && Number.isInteger(draft.at);
+
 export const localBackend = {
   changeKey: LOCAL_KEY,
   async load() {
@@ -776,9 +784,11 @@ export async function saveMemo(id, rawText, { title = '' } = {}) {
 export const draftOf = (id) => cleanDraft(store.item(id)[DRAFT_FIELD]);
 
 // 초안을 저장한다. base는 이 초안을 시작할 때의 메모다. 쓰지 못해도 초안은 이 기기에 보관되고, 연결되면 다시 보낸다.
-// 돌려주는 값: { saved: 계정(또는 이 브라우저)에 썼는지, draft: 저장한 초안 }
+// 돌려주는 값: { saved: 계정(또는 이 브라우저)에 썼는지, draft: 저장한 초안 }.
+// 계정에 저장할 수 없는 초안(글이나 기준 글이 MEMO_MAX자를 넘음)은 대기열에 넣지 않고 draft: null을 돌려준다 (isStorableDraft)
 export async function saveDraft(id, rawText, base) {
   const draft = { text: normalizeMemo(rawText), at: Date.now(), base };
+  if (!isStorableDraft(draft)) return { saved: false, draft: null };
   store.update(id, { [DRAFT_FIELD]: draft });
   return { saved: await writeNow(), draft };
 }
@@ -825,7 +835,8 @@ export async function fetchLatest(id) {
 }
 
 // 예전에는 쓰던 메모를 이 브라우저에 저절로 보관했다 (maeil-memo-draft-{id}). 남아 있으면 초안으로 옮긴다.
-// 이미 초안이 있거나 저장된 메모와 같은 글이면 옮기지 않고 지운다. 옮긴 수를 돌려준다
+// 이미 초안이 있거나 저장된 메모와 같은 글이면 옮기지 않고 지운다. 계정에 저장할 수 없는 글(MEMO_MAX자 초과)은
+// 옮기지도 지우지도 않는다 (지우면 쓰던 글이 사라지고, 옮기면 규칙에 거부되어 다른 저장까지 막는다). 옮긴 수를 돌려준다
 const OLD_DRAFT_PREFIX = 'maeil-memo-draft-';
 
 export function moveOldDrafts() {
@@ -842,8 +853,11 @@ export function moveOldDrafts() {
     const old = readStore('localStorage', key);
     const text = typeof old?.text === 'string' ? normalizeMemo(old.text) : '';
     const memo = store.item(id).memo || '';
-    if (/^(fe|be)-\d+$/.test(id) && text && text !== memo && !draftOf(id)) {
-      store.update(id, { [DRAFT_FIELD]: { text, at: Number(old.at) || Date.now(), base: memo } });
+    const draft = { text, at: Math.trunc(Number(old?.at)) || Date.now(), base: memo };
+    const wanted = /^(fe|be)-\d+$/.test(id) && text && text !== memo && !draftOf(id);
+    if (wanted && !isStorableDraft(draft)) continue;
+    if (wanted) {
+      store.update(id, { [DRAFT_FIELD]: draft });
       moved++;
     }
     removeStore('localStorage', key);

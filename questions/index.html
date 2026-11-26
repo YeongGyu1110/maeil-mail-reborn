@@ -824,7 +824,7 @@
       account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
       STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground, saveSoon,
       fb, firebaseConfigured, loadFirebase,
-      isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo,
+      isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo, MEMO_MAX,
       draftOf, saveDraft, deleteDraft, fetchLatest, moveOldDrafts,
     } from '../memo-core.js';
     import { createMemoView, createMemoEditor, createConflictView, MOD } from '../memo-ui.js';
@@ -1109,6 +1109,18 @@
       return draft ? { base: draft.base, draftAt: draft.at, saved: draft.text } : { base: memo, draftAt: 0, saved: memo };
     }
 
+    // 메모와 초안은 MEMO_MAX자까지다 (firestore.rules도 같은 길이에서 초안을 거부한다).
+    // 다른 곳의 글과 합쳐 길어진 글은 편집기의 글자 수 제한(maxLength)을 거치지 않으므로, 저장할 때 막고 줄이라고 알린다
+    function blockTooLong(text) {
+      if (text.length <= MEMO_MAX) return false;
+      showToast(`${MEMO_MAX.toLocaleString()}자를 넘었어요(${text.length.toLocaleString()}자). 줄인 뒤 저장해 주세요.`, 'error', 5000);
+      editor.focus({ keepSelection: true });
+      return true;
+    }
+
+    // 합친 글을 편집기에 넣었다고 알릴 때 덧붙인다 (합쳐서 MEMO_MAX자를 넘었으면 줄여야 저장된다)
+    const overLimitNote = (text) => (text.length > MEMO_MAX ? ` 합친 글이 ${MEMO_MAX.toLocaleString()}자를 넘어, 줄여야 저장할 수 있어요.` : '');
+
     // 편집기 아래: 지금 쓰는 글이 초안인지, 저장하지 않은 변경이 있는지
     function renderDraftState() {
       if (!editor) return;
@@ -1203,7 +1215,7 @@
         editor.setText(result.text);
         renderDraftState();
         editor.focus({ keepSelection: true });
-        showToast('다른 곳에서 고친 내용을 합쳤어요. 확인한 뒤 다시 저장해 주세요.', 'info', 4000);
+        showToast(`다른 곳에서 고친 내용을 합쳤어요. 확인한 뒤 다시 저장해 주세요.${overLimitNote(result.text)}`, 'info', 5000);
         return false;
       }
       showConflict(result.parts, theirsLabel, previous);
@@ -1226,7 +1238,7 @@
           editor.setText(text);
           renderDraftState();
           editor.focus();
-          showToast('고른 글을 합쳐 편집기에 넣었어요. 다듬은 뒤 다시 저장해 주세요.', 'info', 4000);
+          showToast(`고른 글을 합쳐 편집기에 넣었어요. 다듬은 뒤 다시 저장해 주세요.${overLimitNote(text)}`, 'info', 5000);
         },
         onCancel() {
           hide();
@@ -1258,9 +1270,17 @@
           editor.setDraftState(session.draftAt ? '초안 · 바뀐 내용 없음' : '바뀐 내용 없음');
           return true;
         }
+        if (blockTooLong(text)) return false;
         editor.setDraftState('초안 저장 중…');
         if (!(await catchUp(text, { publish: false }))) return false;
         const result = await saveDraft(question.id, text, session.base);
+        if (!result.draft) {
+          // 글은 위에서 확인했으니, 기준이 된 저장된 메모가 MEMO_MAX자를 넘는다 (이 제한이 생기기 전에 저장한 긴 메모).
+          // 메모로 저장하면 기준이 지금 글로 바뀌어 다시 초안을 저장할 수 있다
+          renderDraftState();
+          showToast(`저장된 메모가 ${MEMO_MAX.toLocaleString()}자를 넘어 초안으로 저장할 수 없어요. 메모로 저장해 주세요.`, 'error', 5000);
+          return false;
+        }
         if (!editor) return result.saved;
         session = { ...session, draftAt: result.draft.at, saved: result.draft.text };
         editor.setDraftState(result.saved ? '초안을 저장했어요' : '초안 · 이 기기에 보관했어요 · 연결되면 올려요');
@@ -1293,6 +1313,7 @@
         closeEditor();
         return;
       }
+      if (blockTooLong(text)) return;
       // Ctrl+Enter는 쓰다가 잘못 누르기 쉬우므로(Ctrl+S를 누른 손을 떼기 전에 Enter로 줄을 바꾸는 등) GitHub에 커밋할 때는 한 번 더 묻는다.
       // 커밋은 저장소 기록에 남아 되돌리기 어렵지만, 초안 저장은 메모를 바꾸지 않으므로 묻지 않는다. 저장 버튼은 일부러 누르는 것이라 묻지 않는다
       if (shortcut && canCommitMemo() && !(await confirmCommit())) return;
