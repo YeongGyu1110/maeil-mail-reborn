@@ -678,6 +678,26 @@
       text-underline-offset: 3px;
     }
 
+    /* 메모와 따로 저장해 둔 초안이 있다: 메모 한 줄이 길어도 보이게 줄어들지 않는다 */
+    .q-draft {
+      position: relative;
+      z-index: 1;
+      flex-shrink: 0;
+      font-weight: 600;
+      color: var(--review);
+      text-decoration: none;
+    }
+
+    .q-draft::before {
+      content: "·";
+      margin-right: 8px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .q-cat:empty + .q-memo[hidden] + .q-draft::before { content: none; }
+    .q-draft:hover { text-decoration: underline; text-underline-offset: 3px; }
+
     .q-marks {
       grid-area: marks;
       display: flex;
@@ -1225,6 +1245,7 @@
             </svg>
             <span class="q-memo-text"></span>
           </a>
+          <a class="q-draft q-link" hidden>초안</a>
         </div>
       </div>
       <div class="q-marks">
@@ -1246,7 +1267,7 @@
     import {
       account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
       readStore, writeStore, removeStore, STALE_AFTER, SAVE_STATE_TEXT,
-      saveErrorShown, flushInBackground, saveSoon,
+      saveErrorShown, flushInBackground, saveSoon, moveOldDrafts,
       fb, firebaseConfigured, loadFirebase, githubTokenKey, rememberGithubToken, connectGithub, githubApi,
     } from './memo-core.js';
 
@@ -1326,6 +1347,7 @@
       if (!firebaseConfigured) {
         await store.use(localBackend);
         renderAccount({ mode: 'unconfigured' });
+        announceMovedDrafts(moveOldDrafts());
         return;
       }
 
@@ -1335,6 +1357,7 @@
         console.error(err);
         await store.use(localBackend);
         renderAccount({ mode: 'unavailable' });
+        announceMovedDrafts(moveOldDrafts());
         return;
       }
 
@@ -1370,8 +1393,14 @@
         // 지난 접속에서 쓰지 못한 변경이 남아 있으면 보낸다
         if (store.busy && account.mode !== 'denied') flushInBackground();
       }
+      announceMovedDrafts(moveOldDrafts());
 
       if (rows.size) renderAll();
+    }
+
+    // 예전에는 쓰던 메모를 이 브라우저에 저절로 보관했다. 남아 있던 것을 초안으로 옮겼으면 알린다
+    function announceMovedDrafts(moved) {
+      if (moved) toast(`이 브라우저에 남아 있던 쓰던 메모 ${moved}개를 초안으로 옮겼어요.`);
     }
 
     // 로그인 전에 이 브라우저에 쌓인 기록을 계정으로 옮긴다 (계정에 이미 있는 필드는 계정 쪽을 유지)
@@ -1929,6 +1958,9 @@
       const memo = row.querySelector('.q-memo');
       memo.href = questionUrl(q.id, '#memo');
       memo.setAttribute('aria-label', `${q.id.toUpperCase()} 메모 보기`);
+      const draft = row.querySelector('.q-draft');
+      draft.href = questionUrl(q.id, '#memo');
+      draft.setAttribute('aria-label', `${q.id.toUpperCase()} 초안 이어 쓰기`);
       return row;
     }
 
@@ -2019,6 +2051,7 @@
       const memo = row.querySelector('.q-memo');
       memo.hidden = !item.memo;
       memo.querySelector('.q-memo-text').textContent = item.memo ? memoPlainText(item.memo) : '';
+      row.querySelector('.q-draft').hidden = !item.draft;
     }
 
     function renderToday() {
