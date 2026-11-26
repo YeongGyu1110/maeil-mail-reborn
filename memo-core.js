@@ -715,24 +715,25 @@ export function memoCommitNote(id) {
 }
 
 // 메모를 저장한다. 빈 글이면 메모를 지우고, GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다.
-// 초안은 메모가 되었으므로(지울 때는 메모와 함께) 같은 쓰기로 지운다.
+// dropDraft: 이 질문의 초안도 같은 쓰기로 지운다 (초안을 메모로 저장했거나, 메모와 함께 지울 때).
+//   이 기기의 기록에 초안이 없어도 지운다. 다른 곳에서 저장한 초안을 편집기에서 합쳤을 수 있기 때문이다 (없는 초안을 지워도 오류가 아니다).
+//   메모만 다시 올릴 때(GitHub 재커밋)는 주지 않는다. 쓰던 초안은 그대로 둔다.
 // GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후(브라우저가 팝업을 허락하는 몇 초 안에) 불러야 한다.
 // title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지,
 // committed는 GitHub에 올렸는지(올리지 않았으면 null)다. 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
-export async function saveMemo(id, rawText, { title = '' } = {}) {
+export async function saveMemo(id, rawText, { title = '', dropDraft = false } = {}) {
   const text = normalizeMemo(rawText);
   const changed = text !== (store.item(id).memo || '');
-  const hadDraft = Boolean(store.item(id)[DRAFT_FIELD]);
   const shouldCommit = Boolean(text) && canCommit() && (changed || isUncommitted(id));
   const shouldRemoveFile = !text && changed && canCommit();
-  if (!changed && !shouldCommit && !hadDraft) return { saved: true, changed: false, committed: null };
+  if (!changed && !shouldCommit && !dropDraft) return { saved: true, changed: false, committed: null };
 
-  const write = changed || hadDraft;
+  const write = changed || dropDraft;
   if (changed) {
     // 커밋할 때는 성공했다고 보고 표시를 지워 둔다 (실패하면 아래에서 다시 켠다)
     store.update(id, text ? { memo: text, memoAt: Date.now(), memoUncommitted: null } : { memo: null, memoAt: null, memoUncommitted: null });
   }
-  if (hadDraft) store.update(id, { [DRAFT_FIELD]: null });
+  if (dropDraft) store.update(id, { [DRAFT_FIELD]: null });
   if (write) hooks.renderSaveState('pending');
 
   // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋(또는 파일 삭제)을 함께 시작한다
