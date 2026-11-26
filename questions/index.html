@@ -1166,6 +1166,9 @@
       editor.focus();
       editor.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       renderDraftState();
+      // 이 탭은 기록을 한동안(탭 캐시 10분) 다시 읽지 않아, 다른 기기에서 방금 저장한 초안이나 메모가 아직 없을 수 있다.
+      // 편집기를 열면 새로 읽고, 그사이 쓰기 시작하지 않았으면 최신 글로 바꾼다 (renderRecords). 쓰기 시작했으면 저장할 때 합친다
+      reloadRecords();
     }
 
     // 메모 자리에서 편집기를 여는 버튼에 포커스를 둔다: 편집 버튼, 초안이 있으면 '이어 쓰기', 메모가 없으면 메모 쓰기 칸.
@@ -1609,10 +1612,22 @@
       if (!editor) renderMemo();
       else if (!hasUnsaved() && !conflict) {
         // 고치지 않은 편집기는 새로 읽은 초안(없으면 메모)으로 바꾸고, 이것을 기준으로 삼는다
+        const previous = session;
         session = sessionFromRecords();
         editor.setText(session.saved);
+        editor.setHasMemo(Boolean(item().memo));
         renderDraftState();
+        const note = switchedNote(previous, session);
+        if (note) showToast(note, 'info', 4000);
       }
+    }
+
+    // 고치지 않은 편집기를 새로 읽은 글로 바꿨을 때 알린다 (바뀐 것이 없으면 빈 글)
+    function switchedNote(previous, next) {
+      if (next.saved === previous.saved && next.draftAt === previous.draftAt) return '';
+      if (next.draftAt && next.draftAt !== previous.draftAt) return '다른 곳에서 저장한 초안으로 바꿨어요.';
+      if (!next.draftAt && previous.draftAt) return '다른 곳에서 이 초안을 메모로 저장했거나 지워서, 지금 메모로 바꿨어요.';
+      return '다른 곳에서 바뀐 메모로 바꿨어요.';
     }
 
     // 다시 불러온 기록으로 화면을 고친다. 고치던 메모가 있거나 쓰는 중이면 다음 기회로 미룬다.
