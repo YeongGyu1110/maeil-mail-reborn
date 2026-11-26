@@ -914,7 +914,9 @@ export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCa
     return before?.kind === 'same' ? before.lines.filter((line) => line.trim()).at(-1) || '' : '';
   };
 
-  const option = (pick, label, text, index) => {
+  // lines: 이 쪽을 고르면 들어갈 줄들. 줄이 없으면 이쪽에서 지운 것이고, 빈 줄만 있으면 빈 줄로 바꾼 것이다
+  // (글자로 이으면 둘 다 빈 글이 되어 구분되지 않는다)
+  const option = (pick, label, lines, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'memo-conflict-choice';
@@ -927,9 +929,11 @@ export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCa
     name.textContent = label;
     const body = document.createElement('span');
     body.className = 'memo-conflict-text';
-    body.textContent = text;
-    if (!text) body.classList.add('is-empty');
-    if (!text) body.textContent = '이 부분을 지웠어요';
+    const blank = lines.every((line) => !line.trim());
+    if (!lines.length) body.textContent = '이 부분을 지웠어요';
+    else if (blank) body.textContent = lines.length === 1 ? '빈 줄' : `빈 줄 ${lines.length}개`;
+    else body.textContent = lines.join('\n');
+    body.classList.toggle('is-empty', blank);
     button.append(name, body);
     return button;
   };
@@ -952,8 +956,8 @@ export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCa
     choices.setAttribute('role', 'radiogroup');
     choices.setAttribute('aria-label', `${head.firstChild.textContent}에 남길 글`);
     choices.append(
-      option('mine', '이 기기에서 쓴 글', part.mine, index),
-      option('theirs', theirsLabel, part.theirs, index),
+      option('mine', '이 기기에서 쓴 글', part.mineLines, index),
+      option('theirs', theirsLabel, part.theirLines, index),
     );
     const both = document.createElement('button');
     both.type = 'button';

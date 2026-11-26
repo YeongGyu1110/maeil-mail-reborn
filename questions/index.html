@@ -485,8 +485,17 @@
       }
     }
 
-    /* 확인 창의 세 번째 버튼(예: 변경 버리기)은 왼쪽 끝에 빨간 글씨로 둔다 */
-    .confirm-buttons .confirm-alt { margin-right: auto; color: var(--danger); }
+    /* 확인 창의 세 번째 버튼(예: 변경 버리기)은 왼쪽 끝에 빨간 글씨로 둔다 (마우스를 올려도 빨강을 지킨다) */
+    .confirm-buttons .confirm-alt { margin-right: auto; }
+    .confirm-buttons .confirm-alt,
+    .confirm-buttons .confirm-alt:hover:not(:disabled) { color: var(--danger); }
+
+    /* 버튼이 셋이면 휴대폰 폭에서 한 줄에 들어가지 않는다 (320px에서 왼쪽 버튼이 잘린다).
+       왼쪽부터의 순서 그대로 위에서 아래로 쌓는다 (화살표 키로 옮기는 순서와 같다) */
+    @media (max-width: 420px) {
+      .confirm-buttons.has-alt { flex-direction: column; align-items: stretch; }
+      .confirm-buttons.has-alt .confirm-alt { margin-right: 0; }
+    }
 
     /* 인쇄: 지면만 남긴다 */
     @media print {
@@ -1159,8 +1168,15 @@
       renderDraftState();
     }
 
-    // 편집기를 닫으면 포커스를 편집기를 열었던 자리(편집 버튼, 메모가 없으면 메모 쓰기 칸)로 돌린다.
-    // 그러지 않으면 편집기와 함께 포커스가 사라져, 키보드로 쓰는 사람은 페이지 처음부터 다시 찾아와야 한다
+    // 메모 자리에서 편집기를 여는 버튼에 포커스를 둔다: 편집 버튼, 초안이 있으면 '이어 쓰기', 메모가 없으면 메모 쓰기 칸.
+    // 편집기나 누른 버튼이 사라진 뒤에 부른다. 그러지 않으면 포커스가 사라져, 키보드로 쓰는 사람은 페이지 처음부터 다시 찾아와야 한다
+    function focusMemoEntry() {
+      const target = els.memoEdit.hidden
+        ? els.memoBody.querySelector('[data-action="draft-resume"], .memo-empty')
+        : els.memoEdit;
+      target?.focus({ preventScroll: true });
+    }
+
     function closeEditor({ fresh = false } = {}) {
       closeMenu();
       conflict?.el.remove();
@@ -1170,7 +1186,7 @@
       session = null;
       renderMemo({ fresh });
       renderStatus();
-      (els.memoEdit.hidden ? els.memoBody.querySelector('.memo-empty') : els.memoEdit)?.focus({ preventScroll: true });
+      focusMemoEntry();
     }
 
     // 저장 직전에 이 초안과 메모를 새로 읽어, 편집기를 연 뒤 다른 곳(다른 기기·탭)에서 바뀌었는지 본다.
@@ -1187,11 +1203,15 @@
         if (theirs) return mergeIn(session.saved, text, theirs.text, '다른 곳에서 저장한 초안', { base: theirs.base, draftAt: theirs.at, saved: theirs.text });
         // 다른 곳에서 이 초안을 메모로 저장했다 (초안은 메모가 되며 지워진다)
         if (latest.memo !== session.base) return mergeIn(session.saved, text, latest.memo, '다른 곳에서 저장한 메모', { base: latest.memo, draftAt: 0, saved: latest.memo });
-        // 다른 곳에서 이 초안을 지웠다 (메모는 그대로다)
+        // 다른 곳에서 이 초안을 지웠다 (메모는 그대로다). 초안 저장이면 초안을 다시 만들고, 저장이면 메모를 바꾸므로 다르게 묻는다
         const again = await confirmDialog({
           title: '다른 곳에서 이 초안을 지웠어요',
-          body: '지금 쓴 글로 다시 저장할까요? 저장한 메모는 그대로예요.',
-          yes: '다시 저장',
+          body: !publish
+            ? '지금 쓴 글로 초안을 다시 저장할까요? 저장한 메모는 그대로예요.'
+            : willCommitMemo(question.id, text)
+              ? `지금 쓴 글을 메모로 저장하고 ${store.memoRepo.fullName}에 커밋할까요?`
+              : '지금 쓴 글을 메모로 저장할까요?',
+          yes: publish ? '메모로 저장' : '초안 다시 저장',
           no: '계속 쓰기',
           tone: 'primary',
         });
@@ -1400,7 +1420,10 @@
       await deleteDraft(question.id);
       saving = false;
       if (editor) closeEditor();
-      else renderMemo();
+      else {
+        renderMemo();
+        focusMemoEntry(); // 누른 '초안 삭제' 버튼이 초안 알림과 함께 사라졌다
+      }
       renderStatus();
       showToast('초안을 삭제했어요.');
     }
@@ -1547,6 +1570,7 @@
       const altButton = dialog.querySelector('[data-answer="alt"]');
       altButton.textContent = alt;
       altButton.hidden = !alt;
+      dialog.querySelector('.confirm-buttons').classList.toggle('has-alt', Boolean(alt));
       return new Promise((resolve) => {
         const finish = (answer) => {
           dialog.removeEventListener('click', onClick);
