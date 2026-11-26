@@ -2,6 +2,7 @@
 // - createMemoView: 메모를 마크다운으로 그리고, 길면 접어 두었다가 펼치고 접을 수 있게 한다
 // - createMemoEditor: 작성 / 미리보기 / 나란히 보기, 서식 버튼, 단축키, 목록 이어 쓰기를 갖춘 편집기
 import { MEMO_MAX, loadMarkdown, renderMarkdown, readStore, writeStore } from './memo-core.js';
+import { joinParts } from './memo-merge.js';
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const MOD = IS_MAC ? '⌘' : 'Ctrl'; // 단축키 안내에 쓰는 이름 (질문 화면의 확인 창도 쓴다)
@@ -164,7 +165,7 @@ const FORMATS = [
 
 let editorCount = 0; // 편집기마다 다른 id를 붙이려고 센다
 
-const HINT = `${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소`;
+const HINT = `${MOD}+S 초안 저장 · ${MOD}+Enter로 저장 · Esc로 닫기`;
 // 저장된 메모가 있는데 작성 칸을 비우면 안내 자리에 띄운다 (메모는 비운 채 저장해서 지운다. 따로 삭제 버튼을 두지 않는다)
 const HINT_CLEARING = '비운 채 저장하면 메모를 지워요';
 
@@ -178,19 +179,18 @@ const LINE_PREFIX = {
   quote: { match: /^>\s?/, strip: null },
 };
 
-// 편집기의 바깥 동작(저장, 임시저장, 취소, 입력할 때)은 화면이 넘겨준다.
+// 편집기의 바깥 동작(저장, 초안 저장, 닫기, 더보기, 입력할 때)은 화면이 넘겨준다.
 // 메모를 지우는 것도 저장이다: 비운 채 저장하면 화면이 지울지 묻고 지운다
 export function createMemoEditor({
   text = '',
   hasMemo = false, // 저장된 메모가 있는지 (비우면 지워진다고 알린다)
   commitNote = '',
-  draftRestored = false,
   ariaLabel = '메모',
-  canTempSave = false, // 임시저장이 따로 뜻이 있는지 (GitHub에 커밋하는 계정일 때만 버튼을 둔다)
   onInput = () => {},
   onSave = () => {}, // 저장 버튼은 onSave(), Ctrl+Enter는 onSave({ shortcut: true })로 부른다
-  onTempSave = () => {}, // Ctrl+S, 터치 기기의 임시저장 버튼: 커밋하지 않고 저장, 편집기는 열어 둔다
-  onCancel = () => {},
+  onSaveDraft = () => {}, // Ctrl+S: 메모는 그대로 두고 초안만 저장한다. 편집기는 열어 둔다
+  onCancel = () => {}, // 닫기 버튼, Esc
+  onMore = () => {}, // 더보기 버튼 (누른 버튼을 넘긴다. 펼칠 목록은 화면이 그린다)
 } = {}) {
   const el = document.createElement('div');
   el.className = 'memo-editor';
@@ -224,8 +224,10 @@ export function createMemoEditor({
         <span class="memo-hint" aria-live="polite"></span>
       </div>
       <div class="memo-editor-buttons">
-        <button type="button" class="btn btn-sm memo-tempsave" data-action="tempsave" title="GitHub에 커밋하지 않고 저장">임시저장</button>
-        <button type="button" class="btn btn-sm" data-action="cancel">취소</button>
+        <button type="button" class="btn btn-sm btn-icon memo-more-btn" data-action="more" aria-label="더보기" aria-haspopup="menu" aria-expanded="false" title="더보기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.5" y="10.5" width="3" height="3" rx="0.6"></rect><rect x="10.5" y="10.5" width="3" height="3" rx="0.6"></rect><rect x="17.5" y="10.5" width="3" height="3" rx="0.6"></rect></svg>
+        </button>
+        <button type="button" class="btn btn-sm" data-action="cancel" title="닫기 (Esc)">닫기</button>
         <button type="button" class="btn btn-sm btn-primary" data-action="save" title="저장 (${MOD}+Enter)">저장</button>
       </div>
     </div>
@@ -238,7 +240,6 @@ export function createMemoEditor({
   const draftState = el.querySelector('.memo-draft-state');
   const saveButton = el.querySelector('[data-action="save"]');
   const hint = el.querySelector('.memo-hint');
-  el.querySelector('[data-action="tempsave"]').hidden = !canTempSave;
   const splitButton = el.querySelector('[data-mode="split"]');
   const commit = el.querySelector('.memo-commit-note');
   const toolbar = el.querySelector('.memo-toolbar');
@@ -299,7 +300,6 @@ export function createMemoEditor({
   input.setAttribute('aria-describedby', `memo-keys-${uid}`); // 화면 읽기 도구에 작성 칸의 키를 알린다 (화면에는 보이지 않는다)
   commit.textContent = commitNote;
   commit.hidden = !commitNote;
-  if (draftRestored) draftState.textContent = '저장하지 않은 초안을 불러왔어요';
 
   let preferred = ['write', 'preview', 'split'].includes(readStore('localStorage', MODE_KEY)) ? readStore('localStorage', MODE_KEY) : 'split';
   let wide = false;
@@ -308,9 +308,9 @@ export function createMemoEditor({
   let busy = false;
   let shiftEnter = false;
   let pendingTab = null; // 한글 조합 중에 누른 Tab (true면 Shift+Tab)
-  let pendingTempSave = false; // 한글 조합 중에 누른 Ctrl+S
+  let pendingDraftSave = false; // 한글 조합 중에 누른 Ctrl+S
   let pendingPreviewToggle = false; // 한글 조합 중에 누른 Ctrl+Shift+P
-  let savedMemo = hasMemo; // 저장된 메모가 있는지 (새 메모를 처음 임시저장하면 생긴다)
+  let savedMemo = hasMemo; // 저장된 메모가 있는지 (비우고 저장하면 지워진다고 알린다)
   // 미리보기를 끄면 돌아갈 보기 (작성 또는 나란히). 사용자가 고른 보기를 기억한다
   let lastEditMode = preferred === 'preview' ? 'write' : preferred;
 
@@ -709,7 +709,7 @@ export function createMemoEditor({
     if (target.dataset.mode) setMode(target.dataset.mode);
     else if (target.dataset.format) applyFormat(target.dataset.format);
     else if (target.dataset.action === 'save') onSave();
-    else if (target.dataset.action === 'tempsave') onTempSave();
+    else if (target.dataset.action === 'more') onMore(target);
     else if (target.dataset.action === 'cancel') onCancel();
   });
 
@@ -734,12 +734,12 @@ export function createMemoEditor({
       else indentLines(e.shiftKey);
       return;
     }
-    // Ctrl+S: 브라우저의 '페이지 저장' 대신 임시저장. 한글 조합 중이면 글자가 확정된 뒤에 저장한다
+    // Ctrl+S: 브라우저의 '페이지 저장' 대신 초안 저장. 한글 조합 중이면 글자가 확정된 뒤에 저장한다
     if (isShortcut(e, 's')) {
       e.preventDefault();
       if (busy) return;
-      if (e.isComposing || e.keyCode === 229) pendingTempSave = true;
-      else onTempSave();
+      if (e.isComposing || e.keyCode === 229) pendingDraftSave = true;
+      else onSaveDraft();
       return;
     }
     // Ctrl+Shift+P: 미리보기로. 한글 조합 중이면 글자가 확정된 뒤에 바꾼다 (작성 칸을 숨기기 전에 마지막 글자를 넣는다)
@@ -765,7 +765,7 @@ export function createMemoEditor({
     }
   });
 
-  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 취소, Ctrl+Enter로 저장, Ctrl+S로 임시저장, Ctrl+Shift+P로 미리보기 전환을 한다
+  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 닫기, Ctrl+Enter로 저장, Ctrl+S로 초안 저장, Ctrl+Shift+P로 미리보기 전환을 한다
   el.addEventListener('keydown', (e) => {
     if (e.target === input) return;
     if (isToolbarKey(e)) {
@@ -787,16 +787,16 @@ export function createMemoEditor({
       e.preventDefault();
       onSave({ shortcut: true });
     } else if (isShortcut(e, 's')) {
-      onTempSave();
+      onSaveDraft();
     }
   });
 
   input.addEventListener('beforeinput', continueList);
 
   input.addEventListener('compositionend', () => {
-    if (pendingTempSave) {
-      pendingTempSave = false;
-      setTimeout(onTempSave);
+    if (pendingDraftSave) {
+      pendingDraftSave = false;
+      setTimeout(onSaveDraft);
     }
     if (pendingPreviewToggle) {
       pendingPreviewToggle = false;
@@ -858,7 +858,7 @@ export function createMemoEditor({
     setDraftState(textValue) {
       draftState.textContent = textValue;
     },
-    // 새 메모를 처음 임시저장하면 저장된 메모가 생긴다 (이제 비우면 지워진다고 알린다)
+    // 저장된 메모가 생기거나 없어지면 알린다 (비우면 지워진다는 안내를 바꾼다)
     setHasMemo(value) {
       savedMemo = value;
       updateHint();
@@ -873,6 +873,135 @@ export function createMemoEditor({
       resizeObserver.disconnect();
       window.removeEventListener('resize', onWindowResize);
       clearTimeout(previewTimer);
+    },
+  };
+}
+
+// ---------- 겹친 곳 고르기 ----------
+// 같은 글을 다른 곳에서도 고쳐 서로 겹친 곳(memo-merge.js의 충돌)마다, 남길 글을 고르게 한다.
+// GitHub 웹의 충돌 편집기를 한 줄로 줄인 것이다: 겹친 곳마다 '이 기기에서 쓴 글 / 다른 곳의 글 / 둘 다'를 고르고,
+// 다 고르면 합친 글을 편집기에 넣는다. 저장은 하지 않는다 (편집기에서 다듬은 뒤 다시 저장한다).
+// parts: mergeMemo의 parts, theirsLabel: 다른 쪽 글의 이름 (예: 다른 곳에서 저장한 초안)
+let conflictCount = 0;
+
+export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCancel = () => {} }) {
+  const conflicts = parts.filter((part) => part.kind === 'conflict');
+  const picks = new Array(conflicts.length).fill(null);
+  const uid = ++conflictCount;
+  const el = document.createElement('section');
+  el.className = 'memo-conflict';
+  el.setAttribute('aria-labelledby', `memo-conflict-title-${uid}`);
+  el.innerHTML = `
+    <div class="memo-conflict-head">
+      <h4 class="memo-conflict-title" id="memo-conflict-title-${uid}" tabindex="-1">다른 곳에서 고친 부분과 겹쳐요</h4>
+      <p class="memo-conflict-desc">겹친 곳마다 남길 글을 골라 주세요. 고르면 합친 글이 편집기에 들어가고, 다듬은 뒤 다시 저장하면 돼요.</p>
+    </div>
+    <ol class="memo-conflict-list"></ol>
+    <div class="memo-conflict-foot">
+      <span class="memo-conflict-left" aria-live="polite"></span>
+      <div class="memo-conflict-buttons">
+        <button type="button" class="btn btn-sm" data-action="conflict-cancel">취소</button>
+        <button type="button" class="btn btn-sm btn-primary" data-action="conflict-done">편집기에 넣기</button>
+      </div>
+    </div>`;
+  const list = el.querySelector('.memo-conflict-list');
+  const left = el.querySelector('.memo-conflict-left');
+  const done = el.querySelector('[data-action="conflict-done"]');
+
+  // 겹친 곳 바로 앞의 같은 줄 하나를 보여 어디인지 알게 한다
+  const contextOf = (part) => {
+    const before = parts[parts.indexOf(part) - 1];
+    return before?.kind === 'same' ? before.lines.filter((line) => line.trim()).at(-1) || '' : '';
+  };
+
+  const option = (pick, label, text, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'memo-conflict-choice';
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', 'false');
+    button.dataset.pick = pick;
+    button.dataset.index = String(index);
+    const name = document.createElement('span');
+    name.className = 'memo-conflict-label';
+    name.textContent = label;
+    const body = document.createElement('span');
+    body.className = 'memo-conflict-text';
+    body.textContent = text;
+    if (!text) body.classList.add('is-empty');
+    if (!text) body.textContent = '이 부분을 지웠어요';
+    button.append(name, body);
+    return button;
+  };
+
+  conflicts.forEach((part, index) => {
+    const item = document.createElement('li');
+    item.className = 'memo-conflict-item';
+    const head = document.createElement('p');
+    head.className = 'memo-conflict-num';
+    head.textContent = conflicts.length > 1 ? `겹친 곳 ${index + 1} / ${conflicts.length}` : '겹친 곳';
+    const context = contextOf(part);
+    if (context) {
+      const hint = document.createElement('span');
+      hint.className = 'memo-conflict-context';
+      hint.textContent = `${context} 다음`;
+      head.append(hint);
+    }
+    const choices = document.createElement('div');
+    choices.className = 'memo-conflict-choices';
+    choices.setAttribute('role', 'radiogroup');
+    choices.setAttribute('aria-label', `${head.firstChild.textContent}에 남길 글`);
+    choices.append(
+      option('mine', '이 기기에서 쓴 글', part.mine, index),
+      option('theirs', theirsLabel, part.theirs, index),
+    );
+    const both = document.createElement('button');
+    both.type = 'button';
+    both.className = 'memo-conflict-both';
+    both.setAttribute('role', 'radio');
+    both.setAttribute('aria-checked', 'false');
+    both.dataset.pick = 'both';
+    both.dataset.index = String(index);
+    both.textContent = '둘 다 남기기 (이 기기의 글 다음에 다른 곳의 글)';
+    choices.append(both);
+    item.append(head, choices);
+    list.append(item);
+  });
+
+  function render() {
+    const remaining = picks.filter((pick) => !pick).length;
+    left.textContent = remaining ? `${conflicts.length}곳 중 ${remaining}곳이 남았어요` : '모두 골랐어요';
+    done.disabled = remaining > 0;
+    for (const button of el.querySelectorAll('[data-pick]')) {
+      button.setAttribute('aria-checked', String(picks[Number(button.dataset.index)] === button.dataset.pick));
+    }
+  }
+
+  el.addEventListener('click', (e) => {
+    const choice = e.target.closest('[data-pick]');
+    if (choice) {
+      picks[Number(choice.dataset.index)] = choice.dataset.pick;
+      render();
+      return;
+    }
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'conflict-cancel') onCancel();
+    else if (action === 'conflict-done' && !done.disabled) onDone(joinParts(parts, (_, index) => picks[index]));
+  });
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    onCancel();
+  });
+
+  render();
+  return {
+    el,
+    focus() {
+      el.querySelector('.memo-conflict-title').focus({ preventScroll: true });
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     },
   };
 }

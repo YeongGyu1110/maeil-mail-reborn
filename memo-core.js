@@ -1,5 +1,5 @@
 // 학습 기록 공용 코드: 질문 목록(index.html)과 질문 화면(questions/index.html)이 같이 쓴다.
-// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 메모 마크다운 그리기, 메모 저장을 담는다.
+// 학습 기록 저장(이 브라우저 / Firestore), 저장 실패 재시도, GitHub 커밋, 메모 마크다운 그리기, 메모·초안 저장을 담는다.
 // 메모 보기·편집기 화면은 memo-ui.js가 맡는다 (질문 화면만 쓴다).
 // 두 화면이 같은 저장 코드와 같은 브라우저 저장소 키를 쓰므로, 한 화면에서 저장한 기록을 다른 화면이 그대로 이어 읽는다.
 import { firebaseConfig } from './firebase-config.js';
@@ -11,8 +11,12 @@ export const MEMO_MAX = 3000;
 export const normalizeMemo = (text) => text.replace(/^(?:[ \t]*\n)+/, '').trimEnd();
 // 메모는 기본 문서와 따로 묶음 문서 4개(users/{uid}/memos/0~3)에 나눠 담는다. 개수를 바꾸면 firestore.rules도 같이 바꾼다
 const MEMO_SHARDS = 4;
-// memoUncommitted: 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모(임시저장, 커밋 실패)면 true
+// memoUncommitted: 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모(커밋 실패, 예전의 임시저장)면 true
 const MEMO_FIELDS = ['memo', 'memoAt', 'memoUncommitted'];
+// 초안: 메모를 고치는 작업본. 메모와 따로 두어, 초안을 저장해도 메모는 그대로다. 질문마다 하나다.
+// { text: 초안 글, at: 초안을 저장한 시각, base: 초안을 시작할 때의 메모 (그사이 메모가 바뀌었는지 비교하고 합치는 기준) }
+// Firestore에서는 질문마다 문서 하나(users/{uid}/drafts/{id})에 둔다. 메모 묶음 문서에 같이 두면 문서 크기 한도(1 MiB)를 넘을 수 있다
+const DRAFT_FIELD = 'draft';
 const RETRY_BASE = 5000; // 저장 실패 시 5초부터 두 배씩, 최대 10분 간격으로 다시 시도한다
 const RETRY_MAX = 10 * 60 * 1000;
 const CACHE_TTL = 10 * 60 * 1000; // 화면을 오갈 때마다 Firestore를 다시 읽지 않도록 탭 단위 캐시
@@ -52,7 +56,7 @@ export function removeStore(type, key) {
 }
 
 // ---------- 학습 기록 저장 ----------
-// items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000 } }
+// items: { "fe-1": { level: "review" | "done", starred: true, memo: "...", memoAt: 1761379200000, draft: { text, at, base } } }
 // memoRepo: { id, fullName: "owner/name" } (GitHub 로그인 사용자만)
 // 미학습은 level이 없고, 별표가 없으면 starred가 없다. patch의 null은 해당 필드를 지운다는 뜻이다.
 // 화면에서는 메모까지 한 items로 다루고, Firestore에 쓸 때만 메모를 묶음 문서로 나눈다 (createFirestoreBackend).
@@ -73,10 +77,21 @@ function applyPatch(items, patch) {
   }
 }
 
+// 저장소에서 읽은 초안을 정해진 모양으로 맞춘다 (모양이 다르면 없는 것으로 본다)
+export function cleanDraft(draft) {
+  if (!draft || typeof draft.text !== 'string') return null;
+  return { text: draft.text, at: Number(draft.at) || 0, base: typeof draft.base === 'string' ? draft.base : '' };
+}
+
 export const localBackend = {
   changeKey: LOCAL_KEY,
   async load() {
     return { items: readStore('localStorage', LOCAL_KEY) || {}, memoRepo: null };
+  },
+  // 저장 직전에 다른 탭에서 바뀌었는지 보려고 이 질문의 메모와 초안을 새로 읽는다
+  async latest(id) {
+    const item = (readStore('localStorage', LOCAL_KEY) || {})[id] || {};
+    return { memo: item.memo || '', draft: cleanDraft(item.draft) };
   },
   async write(patch) {
     const items = readStore('localStorage', LOCAL_KEY) || {};
@@ -102,6 +117,8 @@ export function createFirestoreBackend(uid) {
   const ref = fb.fs.doc(fb.db, 'users', uid);
   const memosRef = fb.fs.collection(ref, 'memos');
   const memoRef = (shard) => fb.fs.doc(memosRef, shard);
+  const draftsRef = fb.fs.collection(ref, 'drafts');
+  const draftRef = (id) => fb.fs.doc(draftsRef, id);
   const cacheKey = `maeil-cache-${uid}`;
   const snapshotKey = `maeil-snapshot-${uid}`; // 불러오기에 실패했을 때 보여줄 마지막 기록
   const pendingKey = `maeil-pending-${uid}`; // 아직 쓰지 못한 변경 (새로고침해도 남아 다음 접속 때 보낸다)
@@ -139,7 +156,15 @@ export function createFirestoreBackend(uid) {
         return { items: cached.items, memoRepo: cached.memoRepo || null };
       }
 
-      const [snap, memoDocs] = await Promise.all([fb.fs.getDoc(ref), fb.fs.getDocs(memosRef)]);
+      // 초안을 읽지 못해도(초안 규칙을 배포하기 전 등) 다른 기록은 보여준다
+      const [snap, memoDocs, draftDocs] = await Promise.all([
+        fb.fs.getDoc(ref),
+        fb.fs.getDocs(memosRef),
+        fb.fs.getDocs(draftsRef).catch((err) => {
+          console.error(err);
+          return { docs: [] };
+        }),
+      ]);
       const doc = snap.exists() ? snap.data() : {};
 
       const memos = {};
@@ -162,6 +187,10 @@ export function createFirestoreBackend(uid) {
         if (!memos[id] || (memo.memoAt || 0) > (memos[id].memoAt || 0)) memos[id] = memo;
       }
       for (const [id, memo] of Object.entries(memos)) items[id] = { ...items[id], ...memo };
+      for (const draftDoc of draftDocs.docs) {
+        const draft = cleanDraft(draftDoc.data());
+        if (draft) items[draftDoc.id] = { ...items[draftDoc.id], [DRAFT_FIELD]: draft };
+      }
 
       // 옮기지 못해도 기록은 그대로 보여주고, 다음에 불러올 때 다시 옮긴다
       if (Object.keys(legacyMemos).length) {
@@ -175,9 +204,14 @@ export function createFirestoreBackend(uid) {
     async write(patch, snapshot) {
       const main = {};
       const shards = {};
+      const drafts = {}; // 질문 ID → 초안(지우면 null)
       const memoIds = [];
       for (const [id, fields] of Object.entries(patch)) {
         for (const [key, value] of Object.entries(fields)) {
+          if (key === DRAFT_FIELD) {
+            drafts[id] = value;
+            continue;
+          }
           const target = isMemoField(key) ? (shards[memoShard(id)] ??= {}) : main;
           (target[id] ??= {})[key] = value === null ? fb.fs.deleteField() : value;
         }
@@ -192,10 +226,20 @@ export function createFirestoreBackend(uid) {
       const batch = fb.fs.writeBatch(fb.db);
       if (Object.keys(main).length) batch.set(ref, { items: main }, { merge: true });
       for (const [shard, memos] of Object.entries(shards)) batch.set(memoRef(shard), memos, { merge: true });
+      for (const [id, draft] of Object.entries(drafts)) {
+        if (draft) batch.set(draftRef(id), draft);
+        else batch.delete(draftRef(id));
+      }
       await batch.commit();
       for (const id of memoIds) legacy.delete(id);
       remember(snapshot);
       announce();
+    },
+    // 저장 직전에 다른 기기에서 바뀌었는지 보려고 이 질문의 메모(묶음 문서)와 초안을 새로 읽는다 (읽기 2회)
+    async latest(id) {
+      const [shardSnap, draftSnap] = await Promise.all([fb.fs.getDoc(memoRef(memoShard(id))), fb.fs.getDoc(draftRef(id))]);
+      const memo = shardSnap.exists() ? shardSnap.data()[id]?.memo : '';
+      return { memo: memo || '', draft: draftSnap.exists() ? cleanDraft(draftSnap.data()) : null };
     },
     async saveMemoRepo(repo, snapshot) {
       await fb.fs.setDoc(ref, { memoRepo: repo }, { mergeFields: ['memoRepo'] });
@@ -493,7 +537,7 @@ async function commitMemo(token, id, text, title) {
 }
 
 // 메모를 지우면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다 (잔디도 그대로).
-// 파일이 없으면(임시저장만 하고 올린 적 없는 메모) 할 일이 없으므로 false를 돌려준다
+// 파일이 없으면(커밋한 적 없는 메모) 할 일이 없으므로 false를 돌려준다
 async function deleteMemoFile(token, id, title) {
   const path = `/repos/${store.memoRepo.fullName}/contents/${id}.md`;
 
@@ -649,7 +693,7 @@ export function saveSoon() {
 // ---------- 메모 저장 ----------
 // 편집기 모양은 질문 화면이 정하고, 여기서는 글자를 받아 기록에 쓰고 GitHub에 커밋하는 일만 한다.
 
-// 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모인지 (임시저장했거나 커밋에 실패했다).
+// 계정에는 저장했지만 GitHub에는 아직 올리지 않은 메모인지 (커밋에 실패했거나 예전 임시저장으로 저장했다).
 // 메모와 함께 계정에 남으므로 새로고침하거나 다른 기기에서 열어도 알 수 있다
 export const isUncommitted = (id) => store.item(id).memoUncommitted === true;
 
@@ -663,31 +707,31 @@ export function memoCommitNote(id) {
 }
 
 // 메모를 저장한다. 빈 글이면 메모를 지우고, GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다.
-// commit이 false면 임시저장이다: 계정(또는 이 브라우저)에만 쓰고 GitHub에는 올리지 않으며, 알림도 띄우지 않는다
-// (습관처럼 자주 누르는 Ctrl+S라 화면이 시끄럽지 않게, 결과는 편집기가 보여준다). 커밋할 수 있는 계정이면 올리지 않았다고 표시해 둔다.
-// GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후 await 없이 불러야 한다.
+// 초안은 메모가 되었으므로(지울 때는 메모와 함께) 같은 쓰기로 지운다.
+// GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후(브라우저가 팝업을 허락하는 몇 초 안에) 불러야 한다.
 // title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지,
 // committed는 GitHub에 올렸는지(올리지 않았으면 null)다. 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
-export async function saveMemo(id, rawText, { title = '', commit = true } = {}) {
+export async function saveMemo(id, rawText, { title = '' } = {}) {
   const text = normalizeMemo(rawText);
   const changed = text !== (store.item(id).memo || '');
-  const committable = Boolean(text) && canCommit();
-  const shouldCommit = commit && committable && (changed || isUncommitted(id));
-  const shouldRemoveFile = commit && !text && changed && canCommit();
-  if (!changed && !shouldCommit) return { saved: true, changed: false, committed: null };
+  const hadDraft = Boolean(store.item(id)[DRAFT_FIELD]);
+  const shouldCommit = Boolean(text) && canCommit() && (changed || isUncommitted(id));
+  const shouldRemoveFile = !text && changed && canCommit();
+  if (!changed && !shouldCommit && !hadDraft) return { saved: true, changed: false, committed: null };
 
+  const write = changed || hadDraft;
   if (changed) {
-    // 커밋할 때는 성공했다고 보고 표시를 지워 둔다 (실패하면 아래에서 다시 켠다). 임시저장이면 켠다
-    const memoUncommitted = !commit && committable ? true : null;
-    store.update(id, text ? { memo: text, memoAt: Date.now(), memoUncommitted } : { memo: null, memoAt: null, memoUncommitted: null });
-    hooks.renderSaveState('pending');
+    // 커밋할 때는 성공했다고 보고 표시를 지워 둔다 (실패하면 아래에서 다시 켠다)
+    store.update(id, text ? { memo: text, memoAt: Date.now(), memoUncommitted: null } : { memo: null, memoAt: null, memoUncommitted: null });
   }
+  if (hadDraft) store.update(id, { [DRAFT_FIELD]: null });
+  if (write) hooks.renderSaveState('pending');
 
   // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋(또는 파일 삭제)을 함께 시작한다
   let github = Promise.resolve();
   if (shouldCommit) github = getGithubToken().then((token) => commitMemo(token, id, text, title));
   else if (shouldRemoveFile) github = getGithubToken().then((token) => deleteMemoFile(token, id, title));
-  const [saved, committed] = await Promise.allSettled([changed ? store.flush() : Promise.resolve(), github]);
+  const [saved, committed] = await Promise.allSettled([write ? store.flush() : Promise.resolve(), github]);
 
   // 커밋 결과를 계정에 남긴다 (바뀔 때만 쓴다)
   let flagged = Promise.resolve();
@@ -700,7 +744,7 @@ export async function saveMemo(id, rawText, { title = '', commit = true } = {}) 
   }
   const [flagResult] = await Promise.allSettled([flagged]);
 
-  if (changed && saved.status === 'fulfilled') hooks.renderSaveState(store.busy ? 'pending' : 'saved');
+  if (write && saved.status === 'fulfilled') hooks.renderSaveState(store.busy ? 'pending' : 'saved');
 
   if (saved.status === 'rejected' || flagResult.status === 'rejected') {
     saveErrorShown = false; // 메모는 직접 누른 저장이라 매번 알린다
@@ -713,12 +757,10 @@ export async function saveMemo(id, rawText, { title = '', commit = true } = {}) 
       : `메모는 저장했지만 GitHub에 올리지 못했어요. ${githubErrorMessage(committed.reason)}`, 'error', 5000);
   } else {
     resetSaveErrors();
-    if (commit) {
-      let message = text ? '메모를 저장했어요.' : '메모를 지웠어요.';
-      if (shouldCommit) message = `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`;
-      else if (shouldRemoveFile && committed.value) message = `메모를 지우고 ${store.memoRepo.fullName}의 ${id}.md 파일도 삭제했어요.`;
-      hooks.toast(message);
-    }
+    let message = text ? '메모를 저장했어요.' : '메모를 지웠어요.';
+    if (shouldCommit) message = `메모를 저장하고 ${store.memoRepo.fullName}에 커밋했어요.`;
+    else if (shouldRemoveFile && committed.value) message = `메모를 지우고 ${store.memoRepo.fullName}의 ${id}.md 파일도 삭제했어요.`;
+    hooks.toast(message);
   }
 
   return {
@@ -726,4 +768,86 @@ export async function saveMemo(id, rawText, { title = '', commit = true } = {}) 
     changed,
     committed: shouldCommit || shouldRemoveFile ? committed.status === 'fulfilled' : null,
   };
+}
+
+// ---------- 초안 ----------
+// 초안 저장은 사용자가 직접 한다 (Ctrl+S, 더보기의 '초안 저장', 닫을 때 묻는 창). 저절로 저장하지 않는다.
+
+export const draftOf = (id) => cleanDraft(store.item(id)[DRAFT_FIELD]);
+
+// 초안을 저장한다. base는 이 초안을 시작할 때의 메모다. 쓰지 못해도 초안은 이 기기에 보관되고, 연결되면 다시 보낸다.
+// 돌려주는 값: { saved: 계정(또는 이 브라우저)에 썼는지, draft: 저장한 초안 }
+export async function saveDraft(id, rawText, base) {
+  const draft = { text: normalizeMemo(rawText), at: Date.now(), base };
+  store.update(id, { [DRAFT_FIELD]: draft });
+  return { saved: await writeNow(), draft };
+}
+
+// 초안을 지운다. 메모는 그대로다
+export async function deleteDraft(id) {
+  store.update(id, { [DRAFT_FIELD]: null });
+  return { saved: await writeNow() };
+}
+
+// 직접 누른 저장이라 기다렸다가 결과를 알린다 (실패는 매번 알린다)
+async function writeNow() {
+  if (account.mode === 'denied') {
+    hooks.renderSaveState('held');
+    return false;
+  }
+  hooks.renderSaveState('pending');
+  try {
+    await store.flush();
+    resetSaveErrors();
+    hooks.renderSaveState(store.busy ? 'pending' : 'saved');
+    return true;
+  } catch (err) {
+    saveErrorShown = false;
+    handleSaveError(err);
+    return false;
+  }
+}
+
+// 저장 직전에 이 질문의 메모와 초안을 새로 읽는다 (다른 기기나 탭에서 바뀌었는지 보려고).
+// 이 기기에서 아직 보내지 못한 변경은 이 기기에서 더 나중에 한 것이므로 읽은 값 위에 덮는다. 읽지 못하면 null
+export async function fetchLatest(id) {
+  if (!store.backend.latest) return null;
+  try {
+    const latest = await store.backend.latest(id);
+    const pending = store.pending[id] || {};
+    if ('memo' in pending) latest.memo = pending.memo || '';
+    if (DRAFT_FIELD in pending) latest.draft = cleanDraft(pending[DRAFT_FIELD]);
+    return latest;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
+// 예전에는 쓰던 메모를 이 브라우저에 저절로 보관했다 (maeil-memo-draft-{id}). 남아 있으면 초안으로 옮긴다.
+// 이미 초안이 있거나 저장된 메모와 같은 글이면 옮기지 않고 지운다. 옮긴 수를 돌려준다
+const OLD_DRAFT_PREFIX = 'maeil-memo-draft-';
+
+export function moveOldDrafts() {
+  if (account.mode === 'denied') return 0;
+  let keys = [];
+  try {
+    keys = Object.keys(localStorage).filter((key) => key.startsWith(OLD_DRAFT_PREFIX));
+  } catch {
+    return 0;
+  }
+  let moved = 0;
+  for (const key of keys) {
+    const id = key.slice(OLD_DRAFT_PREFIX.length);
+    const old = readStore('localStorage', key);
+    const text = typeof old?.text === 'string' ? normalizeMemo(old.text) : '';
+    const memo = store.item(id).memo || '';
+    if (/^(fe|be)-\d+$/.test(id) && text && text !== memo && !draftOf(id)) {
+      store.update(id, { [DRAFT_FIELD]: { text, at: Number(old.at) || Date.now(), base: memo } });
+      moved++;
+    }
+    removeStore('localStorage', key);
+  }
+  if (moved) flushInBackground();
+  return moved;
 }
