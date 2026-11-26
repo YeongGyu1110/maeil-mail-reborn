@@ -824,7 +824,7 @@
       account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
       STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground, saveSoon,
       fb, firebaseConfigured, loadFirebase,
-      isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo, MEMO_MAX,
+      isUncommitted, canCommitMemo, willCommitMemo, getGithubToken, memoCommitNote, saveMemo, normalizeMemo, MEMO_MAX,
       draftOf, saveDraft, deleteDraft, fetchLatest, moveOldDrafts,
     } from '../memo-core.js';
     import { createMemoView, createMemoEditor, createConflictView, MOD } from '../memo-ui.js';
@@ -1322,7 +1322,11 @@
       if (shortcut && canCommitMemo() && !(await confirmCommit())) return;
       saving = true;
       editor.setBusy(true);
-      // 다른 곳에서 바뀌었는지 먼저 본다. 읽기는 대개 1초도 걸리지 않아, 뒤이은 GitHub 연결 팝업도 브라우저가 막지 않는다
+      // GitHub 토큰이 없으면 연결 팝업을 열어야 하는데, 브라우저는 누른 직후에만 팝업을 허락한다 (Safari는 1초 안팎).
+      // 그래서 다른 곳의 변경을 새로 읽기(네트워크) 전에 토큰부터 구해 둔다. 토큰이 있으면 팝업 없이 바로 끝난다.
+      // 겹친 곳이 있어 이번에 저장하지 않게 되어도 연결은 그대로 남아 다음 저장에 쓰인다
+      const githubToken = willCommitMemo(question.id, text) ? getGithubToken() : null;
+      githubToken?.catch(() => {}); // 실패는 saveMemo가 알린다. 저장하지 않고 끝나도 처리하지 않은 거부로 남지 않게 한다
       const ok = await catchUp(text, { publish: true });
       if (!ok || !editor) {
         saving = false;
@@ -1330,7 +1334,7 @@
         return;
       }
       // 초안을 메모로 저장했으니 초안은 지운다 (다른 곳의 초안을 합쳤다면 그 초안도)
-      await saveMemo(question.id, editorText(), { title: question.title, dropDraft: hasDraft() });
+      await saveMemo(question.id, editorText(), { title: question.title, dropDraft: hasDraft(), githubToken });
       saving = false;
       closeEditor({ fresh: true });
     }

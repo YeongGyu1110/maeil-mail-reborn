@@ -480,7 +480,9 @@ export async function connectGithub() {
   return rememberGithubToken(result);
 }
 
-function getGithubToken() {
+// 이 기기에 보관한 GitHub 토큰. 없으면 연결 팝업을 연다.
+// 브라우저는 누른 직후에만 팝업을 허락하므로(Safari는 1초 안팎), 저장 버튼을 누른 뒤 네트워크를 기다리기 전에 부른다
+export function getGithubToken() {
   const token = readStore('localStorage', githubTokenKey(account.user.uid));
   return token ? Promise.resolve(token) : connectGithub();
 }
@@ -708,6 +710,12 @@ export const isUncommitted = (id) => store.item(id).memoUncommitted === true;
 // 저장할 때 GitHub에도 커밋하는지
 export const canCommitMemo = canCommit;
 
+// 이 글을 메모로 저장하면 GitHub에 커밋하는지 (saveMemo가 같은 조건으로 커밋한다): 빈 글이 아니고, 바뀌었거나 아직 올리지 않은 메모
+export function willCommitMemo(id, rawText) {
+  const text = normalizeMemo(rawText);
+  return Boolean(text) && canCommit() && (text !== (store.item(id).memo || '') || isUncommitted(id));
+}
+
 // 편집기 꼬리에 보여줄 GitHub 안내 (커밋하지 않으면 빈 문자열)
 export function memoCommitNote(id) {
   if (!canCommit()) return '';
@@ -718,13 +726,14 @@ export function memoCommitNote(id) {
 // dropDraft: 이 질문의 초안도 같은 쓰기로 지운다 (초안을 메모로 저장했거나, 메모와 함께 지울 때).
 //   이 기기의 기록에 초안이 없어도 지운다. 다른 곳에서 저장한 초안을 편집기에서 합쳤을 수 있기 때문이다 (없는 초안을 지워도 오류가 아니다).
 //   메모만 다시 올릴 때(GitHub 재커밋)는 주지 않는다. 쓰던 초안은 그대로 둔다.
-// GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후(브라우저가 팝업을 허락하는 몇 초 안에) 불러야 한다.
+// GitHub 토큰이 없으면 팝업을 열어야 하므로, 저장 버튼을 누른 직후(브라우저가 팝업을 허락하는 짧은 시간 안에) 불러야 한다.
+// 그 전에 기다릴 일이 있으면 누른 직후에 getGithubToken()을 불러 두고 githubToken으로 넘긴다.
 // title은 GitHub 커밋 메시지에 붙일 질문 제목이다. 돌려주는 saved는 계정(또는 이 브라우저)에 쓰는 데 성공했는지,
 // committed는 GitHub에 올렸는지(올리지 않았으면 null)다. 쓰지 못해도 메모는 이미 기록에 들어가 이 기기에 보관되고, 연결되면 다시 보낸다.
-export async function saveMemo(id, rawText, { title = '', dropDraft = false } = {}) {
+export async function saveMemo(id, rawText, { title = '', dropDraft = false, githubToken = null } = {}) {
   const text = normalizeMemo(rawText);
   const changed = text !== (store.item(id).memo || '');
-  const shouldCommit = Boolean(text) && canCommit() && (changed || isUncommitted(id));
+  const shouldCommit = willCommitMemo(id, text);
   const shouldRemoveFile = !text && changed && canCommit();
   if (!changed && !shouldCommit && !dropDraft) return { saved: true, changed: false, committed: null };
 
@@ -738,8 +747,9 @@ export async function saveMemo(id, rawText, { title = '', dropDraft = false } = 
 
   // 토큰이 없으면 클릭 직후 팝업을 열어야 하므로 Firestore 저장과 GitHub 커밋(또는 파일 삭제)을 함께 시작한다
   let github = Promise.resolve();
-  if (shouldCommit) github = getGithubToken().then((token) => commitMemo(token, id, text, title));
-  else if (shouldRemoveFile) github = getGithubToken().then((token) => deleteMemoFile(token, id, title));
+  const token = () => githubToken || getGithubToken();
+  if (shouldCommit) github = token().then((value) => commitMemo(value, id, text, title));
+  else if (shouldRemoveFile) github = token().then((value) => deleteMemoFile(value, id, title));
   const [saved, committed] = await Promise.allSettled([write ? store.flush() : Promise.resolve(), github]);
 
   // 커밋 결과를 계정에 남긴다 (바뀔 때만 쓴다)
