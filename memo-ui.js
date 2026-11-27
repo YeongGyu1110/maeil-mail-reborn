@@ -879,118 +879,237 @@ export function createMemoEditor({
 
 // ---------- 겹친 곳 고르기 ----------
 // 같은 글을 다른 곳에서도 고쳐 서로 겹친 곳(memo-merge.js의 충돌)마다, 남길 글을 고르게 한다.
-// GitHub 웹의 충돌 편집기를 한 줄로 줄인 것이다: 겹친 곳마다 '이 기기에서 쓴 글 / 다른 곳의 글 / 둘 다'를 고르고,
+// GitHub의 충돌 해결 화면처럼 메모 원문 전체를 줄 번호와 함께 한 상자에 보이고, 겹친 곳에 충돌 표시를 둔다:
+//   <<<<<<< 현재 · 이 기기에서 쓴 글     [현재 수락]
+//   (이 기기의 줄)
+//   =======                              [모두 수락]
+//   (다른 곳의 줄)
+//   >>>>>>> 수신 · 다른 곳에서 저장한 초안 [수신 수락]
+// 버튼 문구는 VS Code 한국어판을 따른다 (현재 · 수신 · 모두). 버튼이 놓인 줄이 곧 고르는 쪽이다.
+// 겹친 곳 안에서 두 글이 다른 낱말은 진하게 칠하고, 한쪽만 고쳐 저절로 들어간 줄은 줄 번호 옆에 색 선을 긋는다.
 // 다 고르면 합친 글을 편집기에 넣는다. 저장은 하지 않는다 (편집기에서 다듬은 뒤 다시 저장한다).
 // parts: mergeMemo의 parts, theirsLabel: 다른 쪽 글의 이름 (예: 다른 곳에서 저장한 초안)
 let conflictCount = 0;
 
+const CONFLICT_MINE = '이 기기에서 쓴 글';
+const LINE_ORIGIN = { mine: '이 기기에서 고친 줄', theirs: '다른 곳에서 고친 줄', both: '두 곳에서 똑같이 고친 줄' };
+
+// 낱말(글자·숫자가 이어진 덩어리, 한국어는 어절), 띄어쓰기, 줄바꿈, 기호 하나를 한 토막으로 나눈다
+const WORD_TOKEN = /[\p{L}\p{N}_]+|\n|[^\S\n]+|[^\p{L}\p{N}_\s]/gu;
+const isSpaceToken = (token) => /^\s+$/.test(token);
+const WORD_DIFF_MAX = 2_000_000; // 비교 표 칸 수가 이보다 크면(아주 긴 두 글) 낱말을 칠하지 않는다
+const WORD_DIFF_SIMILAR = 0.3; // 공통 낱말이 짧은 쪽의 이만큼도 안 되면 거의 다 바뀐 것이라 칠하지 않는다
+
+// 겹친 곳의 두 쪽을 낱말 단위로 비교해, 쪽마다 줄별 토막 [{ text, changed }]을 돌려준다. 칠할 만하지 않으면 null
+function diffWords(mineLines, theirLines) {
+  if (!mineLines.length || !theirLines.length) return null;
+  const a = mineLines.join('\n').match(WORD_TOKEN) || [];
+  const b = theirLines.join('\n').match(WORD_TOKEN) || [];
+  const n = a.length;
+  const m = b.length;
+  if (!n || !m || n * m > WORD_DIFF_MAX) return null;
+  const width = m + 1;
+  const lcs = new Uint32Array((n + 1) * width);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i * width + j] = a[i] === b[j] ? lcs[(i + 1) * width + j + 1] + 1 : Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1]);
+    }
+  }
+  const changedA = new Array(n).fill(true);
+  const changedB = new Array(m).fill(true);
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (a[i] === b[j]) {
+      changedA[i++] = false;
+      changedB[j++] = false;
+    } else if (lcs[(i + 1) * width + j] >= lcs[i * width + j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  const words = (tokens) => tokens.filter((t) => !isSpaceToken(t)).length;
+  const common = a.filter((t, i) => !isSpaceToken(t) && !changedA[i]).length;
+  if (common / Math.min(words(a), words(b)) < WORD_DIFF_SIMILAR) return null;
+  return { mine: wordLines(a, changedA), theirs: wordLines(b, changedB) };
+}
+
+// 토막을 줄별로 나누고, 같은 표시가 이어지면 하나로 붙인다. 띄어쓰기는 앞뒤가 모두 달라진 낱말일 때만 함께 칠한다
+function wordLines(tokens, changed) {
+  const lines = [[]];
+  tokens.forEach((token, i) => {
+    if (token === '\n') {
+      lines.push([]);
+      return;
+    }
+    let mark = changed[i];
+    if (isSpaceToken(token)) mark = Boolean(changed[i - 1] && changed[i + 1] && tokens[i - 1] !== '\n' && tokens[i + 1] !== '\n');
+    const line = lines.at(-1);
+    const last = line.at(-1);
+    if (last && last.changed === mark) last.text += token;
+    else line.push({ text: token, changed: mark });
+  });
+  return lines;
+}
+
 export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCancel = () => {} }) {
-  const conflicts = parts.filter((part) => part.kind === 'conflict');
-  const picks = new Array(conflicts.length).fill(null);
   const uid = ++conflictCount;
+  const conflicts = parts.map((part, index) => (part.kind === 'conflict' ? index : -1)).filter((index) => index >= 0);
+  const picks = {}; // 조각 번호 → 'mine' | 'theirs' | 'both'
+  const marked = parts.some((part) => part.marks?.some(Boolean));
+
   const el = document.createElement('section');
   el.className = 'memo-conflict';
   el.setAttribute('aria-labelledby', `memo-conflict-title-${uid}`);
   el.innerHTML = `
-    <div class="memo-conflict-head">
-      <h4 class="memo-conflict-title" id="memo-conflict-title-${uid}" tabindex="-1">다른 곳에서 고친 부분과 겹쳐요</h4>
-      <p class="memo-conflict-desc">겹친 곳마다 남길 글을 골라 주세요. 고르면 합친 글이 편집기에 들어가고, 다듬은 뒤 다시 저장하면 돼요.</p>
+    <h4 class="memo-conflict-title" id="memo-conflict-title-${uid}" tabindex="-1">다른 곳에서 고친 부분과 겹쳐요</h4>
+    <p class="memo-conflict-desc">겹친 곳마다 남길 글을 고르세요. 다 고르면 편집기에 넣고, 다듬은 뒤 다시 저장해요.</p>
+    <p class="memo-conflict-legend" hidden><span class="memo-conflict-legend-mark is-theirs"></span>다른 곳에서 고쳐 저절로 들어간 줄 <span class="memo-conflict-legend-mark is-mine"></span>이 기기에서 고친 줄</p>
+    <div class="memo-conflict-bulk" hidden>
+      <span class="memo-conflict-bulk-label">남은 겹친 곳 한꺼번에</span>
+      <button type="button" class="memo-conflict-action" data-bulk="mine" aria-label="남은 겹친 곳을 모두 현재(이 기기에서 쓴 글)로 수락">현재 수락</button>
+      <button type="button" class="memo-conflict-action is-theirs" data-bulk="theirs" aria-label="남은 겹친 곳을 모두 수신(다른 곳의 글)으로 수락">수신 수락</button>
     </div>
-    <ol class="memo-conflict-list"></ol>
+    <div class="memo-conflict-file" role="group" aria-label="메모 전체"></div>
     <div class="memo-conflict-foot">
       <span class="memo-conflict-left" aria-live="polite"></span>
       <div class="memo-conflict-buttons">
         <button type="button" class="btn btn-sm" data-action="conflict-cancel">취소</button>
-        <button type="button" class="btn btn-sm btn-primary" data-action="conflict-done">편집기에 넣기</button>
+        <button type="button" class="btn btn-sm btn-primary" data-action="conflict-done" disabled>편집기에 넣기</button>
       </div>
     </div>`;
-  const list = el.querySelector('.memo-conflict-list');
+  const file = el.querySelector('.memo-conflict-file');
   const left = el.querySelector('.memo-conflict-left');
   const done = el.querySelector('[data-action="conflict-done"]');
+  const bulk = el.querySelector('.memo-conflict-bulk');
+  el.querySelector('.memo-conflict-legend').hidden = !marked;
 
-  // 겹친 곳 바로 앞의 같은 줄 하나를 보여 어디인지 알게 한다
-  const contextOf = (part) => {
-    const before = parts[parts.indexOf(part) - 1];
-    return before?.kind === 'same' ? before.lines.filter((line) => line.trim()).at(-1) || '' : '';
+  const make = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
   };
 
-  // lines: 이 쪽을 고르면 들어갈 줄들. 줄이 없으면 이쪽에서 지운 것이고, 빈 줄만 있으면 빈 줄로 바꾼 것이다
-  // (글자로 이으면 둘 다 빈 글이 되어 구분되지 않는다)
-  const option = (pick, label, lines, index) => {
-    const button = document.createElement('button');
+  // 한 줄: 줄 번호 칸 + 글 칸. text가 토막 배열이면 달라진 낱말을 칠한다. 빈 줄도 높이를 지키도록 글 칸을 비워 두지 않는다
+  function row(number, text, className = '', origin = '') {
+    const line = make('div', `memo-conflict-line ${className}${origin ? ` is-from-${origin}` : ''}`.trim());
+    if (origin) line.title = LINE_ORIGIN[origin];
+    const cell = make('span', 'memo-conflict-text');
+    if (Array.isArray(text)) {
+      for (const piece of text) cell.append(piece.changed ? make('mark', 'memo-conflict-word', piece.text) : piece.text);
+      if (!text.length) cell.textContent = '​';
+    } else {
+      cell.textContent = text === '' ? '​' : text;
+    }
+    line.append(make('span', 'memo-conflict-num', number === null ? '' : String(number)), cell);
+    return line;
+  }
+
+  // 충돌 표시 줄: 기호만 고정폭으로 쓰고(고정폭 글꼴에는 한글이 없다), 줄 오른쪽에 그 쪽을 남기는 버튼을 둔다
+  const PICKS = {
+    mine: { label: '현재 수락', name: `현재 수락: ${CONFLICT_MINE}을 남겨요` },
+    both: { label: '모두 수락', name: '모두 수락: 두 글을 다 남겨요 (이 기기의 글 다음에 다른 곳의 글)' },
+    theirs: { label: '수신 수락', name: `수신 수락: ${theirsLabel}을 남겨요` },
+  };
+
+  function marker(sign, name, className, index, pick) {
+    const line = make('div', `memo-conflict-line is-marker ${className}`);
+    const cell = make('span', 'memo-conflict-text');
+    const label = make('span', 'memo-conflict-marker-label');
+    label.append(make('span', 'memo-conflict-sign', sign));
+    if (name) label.append(` ${name}`);
+    const button = make('button', 'memo-conflict-action', PICKS[pick].label);
     button.type = 'button';
-    button.className = 'memo-conflict-choice';
-    button.setAttribute('role', 'radio');
-    button.setAttribute('aria-checked', 'false');
     button.dataset.pick = pick;
     button.dataset.index = String(index);
-    const name = document.createElement('span');
-    name.className = 'memo-conflict-label';
-    name.textContent = label;
-    const body = document.createElement('span');
-    body.className = 'memo-conflict-text';
-    const blank = lines.every((line) => !line.trim());
-    if (!lines.length) body.textContent = '이 부분을 지웠어요';
-    else if (blank) body.textContent = lines.length === 1 ? '빈 줄' : `빈 줄 ${lines.length}개`;
-    else body.textContent = lines.join('\n');
-    body.classList.toggle('is-empty', blank);
-    button.append(name, body);
-    return button;
-  };
+    button.setAttribute('aria-label', PICKS[pick].name);
+    cell.append(label, button);
+    line.append(make('span', 'memo-conflict-num', ''), cell);
+    return line;
+  }
 
-  conflicts.forEach((part, index) => {
-    const item = document.createElement('li');
-    item.className = 'memo-conflict-item';
-    const head = document.createElement('p');
-    head.className = 'memo-conflict-num';
-    head.textContent = conflicts.length > 1 ? `겹친 곳 ${index + 1} / ${conflicts.length}` : '겹친 곳';
-    const context = contextOf(part);
-    if (context) {
-      const hint = document.createElement('span');
-      hint.className = 'memo-conflict-context';
-      hint.textContent = `${context} 다음`;
-      head.append(hint);
-    }
-    const choices = document.createElement('div');
-    choices.className = 'memo-conflict-choices';
-    choices.setAttribute('role', 'radiogroup');
-    choices.setAttribute('aria-label', `${head.firstChild.textContent}에 남길 글`);
-    choices.append(
-      option('mine', '이 기기에서 쓴 글', part.mineLines, index),
-      option('theirs', theirsLabel, part.theirLines, index),
-    );
-    const both = document.createElement('button');
-    both.type = 'button';
-    both.className = 'memo-conflict-both';
-    both.setAttribute('role', 'radio');
-    both.setAttribute('aria-checked', 'false');
-    both.dataset.pick = 'both';
-    both.dataset.index = String(index);
-    both.textContent = '둘 다 남기기 (이 기기의 글 다음에 다른 곳의 글)';
-    choices.append(both);
-    item.append(head, choices);
-    list.append(item);
-  });
+  function resolvedBar(index) {
+    const bar = make('div', 'memo-conflict-resolved');
+    const label = { mine: '현재를 수락했어요', theirs: '수신을 수락했어요', both: '모두 수락했어요' }[picks[index]];
+    const undo = make('button', 'memo-conflict-action', '다시 고르기');
+    undo.type = 'button';
+    undo.dataset.undo = String(index);
+    bar.append(make('span', 'memo-conflict-resolved-label', label), undo);
+    return bar;
+  }
 
   function render() {
-    const remaining = picks.filter((pick) => !pick).length;
-    left.textContent = remaining ? `${conflicts.length}곳 중 ${remaining}곳이 남았어요` : '모두 골랐어요';
+    const rows = [];
+    let number = 1;
+    parts.forEach((part, index) => {
+      // 바뀌지 않은 줄도 접지 않고 다 보인다 (상자 안에서 넘겨 본다)
+      if (part.kind === 'same') {
+        const marks = part.marks || [];
+        part.lines.forEach((text, i) => rows.push(row(number++, text, '', marks[i])));
+        return;
+      }
+      const chosen = picks[index];
+      const block = make('div', `memo-conflict-block${chosen ? ' is-resolved' : ''}`);
+      if (chosen) {
+        block.append(resolvedBar(index));
+        const lines = chosen === 'mine' ? part.mineLines : chosen === 'theirs' ? part.theirLines : [...part.mineLines, ...part.theirLines];
+        if (!lines.length) block.append(row(null, '이 부분을 지웠어요', 'is-note'));
+        lines.forEach((text) => block.append(row(number++, text, 'is-picked')));
+      } else {
+        // 아직 고르지 않은 곳의 줄 번호는 현재 쪽을 고른 것으로 치고 매긴다 (수신 쪽도 같은 번호에서 시작한다)
+        block.setAttribute('role', 'group');
+        block.setAttribute('aria-label', `겹친 곳 ${conflicts.indexOf(index) + 1}`);
+        const words = diffWords(part.mineLines, part.theirLines);
+        const side = (text, className, pieces) => (text === '' ? ['(빈 줄)', `${className} is-note`] : [pieces || text, className]);
+        const start = number;
+        block.append(marker('<<<<<<<', `현재 · ${CONFLICT_MINE}`, 'is-mine', index, 'mine'));
+        if (!part.mineLines.length) block.append(row(null, '(이 쪽에서 지웠어요)', 'is-mine is-note'));
+        part.mineLines.forEach((text, i) => block.append(row(start + i, ...side(text, 'is-mine', words?.mine[i]))));
+        block.append(marker('=======', '', 'is-split', index, 'both'));
+        if (!part.theirLines.length) block.append(row(null, '(이 쪽에서 지웠어요)', 'is-theirs is-note'));
+        part.theirLines.forEach((text, i) => block.append(row(start + i, ...side(text, 'is-theirs', words?.theirs[i]))));
+        block.append(marker('>>>>>>>', `수신 · ${theirsLabel}`, 'is-theirs', index, 'theirs'));
+        number += part.mineLines.length;
+      }
+      rows.push(block);
+    });
+    // 다시 그려도 상자에서 보던 자리를 지킨다
+    const scrollTop = file.scrollTop;
+    file.replaceChildren(...rows);
+    file.scrollTop = scrollTop;
+    const remaining = conflicts.filter((index) => !picks[index]).length;
+    left.textContent = remaining ? `겹친 곳 ${conflicts.length}곳 중 ${remaining}곳이 남았어요` : '다 골랐어요';
+    bulk.hidden = conflicts.length < 2 || remaining < 2;
     done.disabled = remaining > 0;
-    for (const button of el.querySelectorAll('[data-pick]')) {
-      button.setAttribute('aria-checked', String(picks[Number(button.dataset.index)] === button.dataset.pick));
-    }
   }
 
   el.addEventListener('click', (e) => {
-    const choice = e.target.closest('[data-pick]');
-    if (choice) {
-      picks[Number(choice.dataset.index)] = choice.dataset.pick;
+    const all = e.target.closest('[data-bulk]');
+    if (all) {
+      for (const index of conflicts) picks[index] ??= all.dataset.bulk;
       render();
+      done.focus();
+      return;
+    }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) {
+      picks[Number(pick.dataset.index)] = pick.dataset.pick;
+      render();
+      // 다음에 고를 곳으로 옮긴다 (없으면 편집기에 넣기)
+      (el.querySelector('.memo-conflict-action[data-pick]') || done).focus();
+      return;
+    }
+    const undo = e.target.closest('[data-undo]');
+    if (undo) {
+      delete picks[Number(undo.dataset.undo)];
+      render();
+      el.querySelector(`[data-pick][data-index="${undo.dataset.undo}"]`)?.focus();
       return;
     }
     const action = e.target.closest('[data-action]')?.dataset.action;
     if (action === 'conflict-cancel') onCancel();
-    else if (action === 'conflict-done' && !done.disabled) onDone(joinParts(parts, (_, index) => picks[index]));
+    // joinParts는 겹친 곳만 센 번호를 넘기므로, 조각 자체로 고른 것을 찾는다
+    else if (action === 'conflict-done' && !done.disabled) onDone(joinParts(parts, (part) => picks[parts.indexOf(part)]));
   });
 
   el.addEventListener('keydown', (e) => {
@@ -1003,9 +1122,13 @@ export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCa
   render();
   return {
     el,
+    // 붙인 뒤에 부른다: 제목에 초점을 두고, 상자를 첫 겹친 곳이 위에서 두 줄 아래에 오도록 넘긴다
     focus() {
       el.querySelector('.memo-conflict-title').focus({ preventScroll: true });
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const first = file.querySelector('.memo-conflict-block');
+      const line = file.querySelector('.memo-conflict-line');
+      if (first && line) file.scrollTop = Math.max(0, first.offsetTop - line.offsetHeight * 2);
     },
   };
 }
