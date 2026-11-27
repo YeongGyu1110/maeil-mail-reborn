@@ -56,16 +56,27 @@ function diffLines(a, b) {
   return hunks;
 }
 
-// 한 묶음(base[start, end)) 안에서 한쪽의 변경만 적용한 줄들
-function applySide(base, side, hunks, start, end) {
-  const out = [];
+// 한 묶음(base[start, end)) 안에서 한쪽의 변경만 적용한 줄들과, 줄마다 그 쪽에서 바꾼 줄인지(mark) 아니면 그대로인 줄('')인지
+function applySide(base, side, hunks, start, end, mark) {
+  const lines = [];
+  const marks = [];
+  const keep = (from, to) => {
+    for (const line of base.slice(from, to)) {
+      lines.push(line);
+      marks.push('');
+    }
+  };
   let at = start;
   for (const h of hunks) {
-    out.push(...base.slice(at, h.aStart), ...side.slice(h.bStart, h.bEnd));
+    keep(at, h.aStart);
+    for (const line of side.slice(h.bStart, h.bEnd)) {
+      lines.push(line);
+      marks.push(mark);
+    }
     at = h.aEnd;
   }
-  out.push(...base.slice(at, end));
-  return out;
+  keep(at, end);
+  return { lines, marks };
 }
 
 /**
@@ -73,8 +84,10 @@ function applySide(base, side, hunks, start, end) {
  * 돌려주는 값:
  *   clean: 충돌 없이 합쳐졌는지
  *   text: 합친 글 (충돌이 있으면 충돌 자리에 내 글을 넣은 글. 충돌은 대개 parts로 사람이 고르게 한다)
- *   parts: 차례대로 { kind: 'same', lines } 또는 { kind: 'conflict', base, mine, theirs, mineLines, theirLines }
+ *   parts: 차례대로 { kind: 'same', lines, marks } 또는 { kind: 'conflict', base, mine, theirs, mineLines, theirLines }
  *          (base·mine·theirs는 충돌 자리의 글, 지운 쪽이면 빈 문자열)
+ *          marks는 같은 조각의 줄마다 어디서 온 줄인지다: '' (갈라지기 전 그대로) | 'mine' (이 기기에서 고친 줄)
+ *          | 'theirs' (다른 곳에서 고친 줄) | 'both' (두 쪽이 똑같이 고친 줄). 저절로 합쳐진 줄을 화면에 표시하는 데 쓴다
  */
 export function mergeMemo(base, mine, theirs) {
   const o = toLines(base);
@@ -98,23 +111,31 @@ export function mergeMemo(base, mine, theirs) {
   }
 
   const parts = [];
-  const pushSame = (lines) => {
+  const pushSame = (lines, marks = lines.map(() => '')) => {
     if (!lines.length) return;
     const last = parts.at(-1);
-    if (last?.kind === 'same') last.lines.push(...lines);
-    else parts.push({ kind: 'same', lines: [...lines] });
+    if (last?.kind === 'same') {
+      last.lines.push(...lines);
+      last.marks.push(...marks);
+    } else {
+      parts.push({ kind: 'same', lines: [...lines], marks: [...marks] });
+    }
   };
   let at = 0;
   for (const g of groups) {
     pushSame(o.slice(at, g.start));
     const mineHunks = g.hunks.filter((h) => h.side === 'mine');
     const theirHunks = g.hunks.filter((h) => h.side === 'theirs');
-    const mineLines = applySide(o, a, mineHunks, g.start, g.end);
-    const theirLines = applySide(o, b, theirHunks, g.start, g.end);
-    if (!theirHunks.length) pushSame(mineLines);
-    else if (!mineHunks.length) pushSame(theirLines);
-    else if (mineLines.join('\n') === theirLines.join('\n') && mineLines.length === theirLines.length) pushSame(mineLines); // 두 쪽이 똑같이 고쳤다
-    else {
+    const mineSide = applySide(o, a, mineHunks, g.start, g.end, 'mine');
+    const theirSide = applySide(o, b, theirHunks, g.start, g.end, 'theirs');
+    const mineLines = mineSide.lines;
+    const theirLines = theirSide.lines;
+    if (!theirHunks.length) pushSame(mineLines, mineSide.marks);
+    else if (!mineHunks.length) pushSame(theirLines, theirSide.marks);
+    else if (mineLines.join('\n') === theirLines.join('\n') && mineLines.length === theirLines.length) {
+      // 두 쪽이 똑같이 고쳤다
+      pushSame(mineLines, mineSide.marks.map((m, i) => (m || theirSide.marks[i] ? 'both' : '')));
+    } else {
       parts.push({
         kind: 'conflict',
         base: o.slice(g.start, g.end).join('\n'),

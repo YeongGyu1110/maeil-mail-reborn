@@ -138,3 +138,19 @@ test('어느 쪽을 이 기기의 글로 넣어도 합친 결과가 같다 (무�
     if (ab.clean) assert.equal(ab.text, ba.text, JSON.stringify({ o, a, b }));
   }
 });
+
+test('저절로 합친 줄이 어느 쪽에서 왔는지 줄마다 알려 준다 (그대로인 줄은 빈 표시)', () => {
+  const mine = base.replace('카운터', '카운터, 모듈 패턴');
+  const theirs = base.replace('var와 let', 'var와 let의 차이');
+  const r = mergeMemo(base, mine, theirs);
+  const lines = r.parts.flatMap((p) => p.lines.map((line, i) => [line, p.marks[i]]));
+  assert.deepEqual(lines.filter(([, mark]) => mark), [['카운터, 모듈 패턴', 'mine'], ['var와 let의 차이', 'theirs']]);
+  assert.ok(lines.filter(([, mark]) => !mark).every(([line]) => base.split('\n').includes(line)));
+});
+
+test('두 쪽이 똑같이 고친 줄은 both로 표시하고, 같은 조각의 표시 수는 줄 수와 같다', () => {
+  const same = base.replace('카운터', '카운터!');
+  assert.deepEqual(mergeMemo(base, same, same).parts[0].marks.filter(Boolean), ['both']);
+  const r = mergeMemo(base, `${base.replace('## 핵심', '## 핵심 정리')}\n- 내 줄`, base.replace('## 핵심', '## 핵심 요약'));
+  for (const part of r.parts) if (part.kind === 'same') assert.equal(part.marks.length, part.lines.length);
+});
