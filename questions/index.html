@@ -485,6 +485,18 @@
       }
     }
 
+    /* 확인 창의 세 번째 버튼(예: 변경 버리기)은 왼쪽 끝에 빨간 글씨로 둔다 (마우스를 올려도 빨강을 지킨다) */
+    .confirm-buttons .confirm-alt { margin-right: auto; }
+    .confirm-buttons .confirm-alt,
+    .confirm-buttons .confirm-alt:hover:not(:disabled) { color: var(--danger); }
+
+    /* 버튼이 셋이면 휴대폰 폭에서 한 줄에 들어가지 않는다 (320px에서 왼쪽 버튼이 잘린다).
+       왼쪽부터의 순서 그대로 위에서 아래로 쌓는다 (화살표 키로 옮기는 순서와 같다) */
+    @media (max-width: 420px) {
+      .confirm-buttons.has-alt { flex-direction: column; align-items: stretch; }
+      .confirm-buttons.has-alt .confirm-alt { margin-right: 0; }
+    }
+
     /* 인쇄: 지면만 남긴다 */
     @media print {
       body { background: #ffffff; }
@@ -635,6 +647,7 @@
     <h2 id="confirm-title"></h2>
     <p id="confirm-body"></p>
     <div class="confirm-buttons">
+      <button type="button" class="btn confirm-alt" data-answer="alt" hidden></button>
       <button type="button" class="btn" data-answer="no" autofocus></button>
       <button type="button" class="btn btn-danger" data-answer="yes"></button>
     </div>
@@ -818,18 +831,18 @@
   <script type="module">
     import {
       account, hooks, store, localBackend, createFirestoreBackend, watchOtherTabs,
-      readStore, writeStore, removeStore,
       STALE_AFTER, SAVE_STATE_TEXT, saveErrorShown, flushInBackground, saveSoon,
       fb, firebaseConfigured, loadFirebase,
-      isUncommitted, canCommitMemo, memoCommitNote, saveMemo, normalizeMemo,
+      isUncommitted, canCommitMemo, willCommitMemo, getGithubToken, memoCommitNote, saveMemo, normalizeMemo, MEMO_MAX,
+      draftOf, saveDraft, deleteDraft, fetchLatest, moveOldDrafts,
     } from '../memo-core.js';
-    import { createMemoView, createMemoEditor, MOD } from '../memo-ui.js';
+    import { createMemoView, createMemoEditor, createConflictView, MOD } from '../memo-ui.js';
+    import { mergeMemo } from '../memo-merge.js';
 
     // 가져오기가 모두 성공해 이 모듈이 실행되기 시작했다는 표시 (../module-guard.js가 본다)
     window.maeilModuleReady = true;
 
     const LEVEL_LABELS = { new: '미학습', review: '복습 필요', done: '완벽 이해' };
-    const DRAFT_DELAY = 500;
 
     const els = {
       study: document.getElementById('study'),
@@ -854,8 +867,13 @@
     let view = null; // 메모 보기 (createMemoView)
     let editor = null; // 메모 편집기 (createMemoEditor)
     let saving = false;
-    let draftTimer = 0;
-    let editorBase = ''; // 편집기를 열 때 저장돼 있던 메모 (그사이 다른 탭·기기에서 바뀌었는지 비교한다)
+    // 편집 세션: 편집기에 연 글이 어디서 왔는지. 저장 직전에 다른 곳에서 바뀌었는지 비교하는 기준이다
+    //   base: 이 초안을 시작할 때의 메모 (그사이 메모가 바뀌었는지 볼 때)
+    //   draftAt: 열었을 때(또는 마지막으로 저장했을 때) 초안의 저장 시각. 초안이 없으면 0 (그사이 초안이 바뀌었는지 볼 때)
+    //   saved: 마지막으로 저장해 둔 글 (초안이 있으면 초안, 없으면 메모). 편집기의 글이 이것과 다르면 저장하지 않은 변경이 있다
+    let session = null;
+    let conflict = null; // 겹친 곳 고르기 (createConflictView)
+    let menu = null; // 편집기의 더보기 목록
 
     // ---------- 계정과 저장 상태 ----------
 
@@ -980,37 +998,8 @@
       els.statusLevel.dataset.level = level;
       els.statusLevel.textContent = LEVEL_LABELS[level];
       els.statusLevel.hidden = level === 'new';
-      els.statusMemo.hidden = !item().memo;
+      els.statusMemo.hidden = !item().memo && !draftOf(question.id);
       els.docStatus.hidden = els.statusLevel.hidden && els.statusMemo.hidden;
-    }
-
-    // ---------- 메모 초안: 저장하지 않고 떠나도 이 기기에 남겨 두었다가 이어 쓴다 ----------
-
-    const draftKey = () => `maeil-memo-draft-${question.id}`;
-
-    function readDraft() {
-      const draft = readStore('localStorage', draftKey());
-      if (!draft || typeof draft.text !== 'string' || !draft.text.trim()) return null;
-      return normalizeMemo(draft.text) === (item().memo || '') ? null : draft;
-    }
-
-    function keepDraft(text) {
-      clearTimeout(draftTimer);
-      draftTimer = setTimeout(() => {
-        if (!editor) return;
-        if (isEditorDirty() && text.trim()) {
-          const kept = writeStore('localStorage', draftKey(), { text, at: Date.now() });
-          editor.setDraftState(kept ? '초안 자동 보관됨' : '');
-        } else {
-          removeStore('localStorage', draftKey());
-          editor.setDraftState('');
-        }
-      }, DRAFT_DELAY);
-    }
-
-    function dropDraft() {
-      clearTimeout(draftTimer);
-      removeStore('localStorage', draftKey());
     }
 
     // ---------- 메모 보기 ----------
@@ -1037,19 +1026,23 @@
       return button;
     }
 
+    // 메모와 따로 저장해 둔 초안이 있다 (메모는 그대로다). 이어 쓰거나 지운다
     function draftNotice(draft) {
       const box = document.createElement('div');
       box.className = 'memo-draft';
-      box.setAttribute('role', 'status');
       const text = document.createElement('p');
       text.className = 'memo-draft-text';
       text.style.margin = '0';
       const strong = document.createElement('strong');
-      strong.textContent = '저장하지 않은 초안이 있어요';
-      text.append(strong, ` · ${formatWhen(draft.at)} 쓰던 내용`);
+      strong.textContent = '초안이 있어요';
+      const when = document.createElement('time');
+      when.dateTime = new Date(draft.at).toISOString();
+      when.title = dateFormat.format(draft.at);
+      when.textContent = `${formatWhen(draft.at)} 저장`;
+      text.append(strong, ' · ', when);
       const buttons = document.createElement('div');
       buttons.className = 'memo-draft-buttons';
-      buttons.append(smallButton('버리기', 'draft-discard'), smallButton('이어 쓰기', 'draft-resume', true));
+      buttons.append(smallButton('초안 삭제', 'draft-delete'), smallButton('이어 쓰기', 'draft-resume', true));
       box.append(text, buttons);
       return box;
     }
@@ -1077,7 +1070,7 @@
         when.textContent = `${formatWhen(memoAt)} 저장`;
         foot.append(when);
       }
-      // 임시저장했거나 커밋에 실패해 아직 GitHub에 없는 메모 (실패는 저장할 때 알림으로 따로 알린다)
+      // 커밋에 실패했거나 예전 임시저장으로 저장해 아직 GitHub에 없는 메모 (실패는 저장할 때 알림으로 따로 알린다)
       if (isUncommitted(question.id)) {
         const warn = document.createElement('span');
         warn.className = 'memo-foot-warn';
@@ -1097,23 +1090,55 @@
       view = null;
       const memo = item().memo || '';
       const nodes = [];
-      const draft = readDraft();
+      const draft = draftOf(question.id);
       if (draft) nodes.push(draftNotice(draft));
       if (memo) {
         view = createMemoView(memo, { id: question.id });
         if (fresh) view.el.classList.add('is-fresh');
         nodes.push(view.el, memoFoot(item().memoAt));
-      } else {
+      } else if (!draft) {
         nodes.push(emptyMemo());
       }
       els.memoBody.replaceChildren(...nodes);
-      els.memoEdit.hidden = !memo;
+      // 초안이 있으면 초안 알림의 '이어 쓰기'로 연다 (같은 버튼을 두 번 두지 않는다)
+      els.memoEdit.hidden = !memo || Boolean(draft);
     }
 
     // ---------- 메모 편집 ----------
+    // 메모는 바로 고치지 않고 초안에서 고친다. 초안 저장(Ctrl+S, 더보기, 닫을 때 묻는 창)은 메모를 그대로 두고 초안만 저장하고,
+    // 저장은 초안을 메모로 만들어 커밋한다. 초안은 계정에 두어 다른 기기에서도 이어 쓴다. 저절로 저장하지 않는다.
 
-    function isEditorDirty() {
-      return Boolean(editor) && normalizeMemo(editor.getText()) !== (item().memo || '');
+    const editorText = () => normalizeMemo(editor.getText());
+    const hasUnsaved = () => Boolean(editor) && editorText() !== session.saved;
+
+    // 편집기에 연 글: 초안이 있으면 그 초안, 없으면 메모
+    function sessionFromRecords() {
+      const memo = item().memo || '';
+      const draft = draftOf(question.id);
+      return draft ? { base: draft.base, draftAt: draft.at, saved: draft.text } : { base: memo, draftAt: 0, saved: memo };
+    }
+
+    // 지울 초안이 있는지: 이 기기의 기록에 있거나, 다른 곳에서 저장한 초안을 편집기에서 합쳤다 (그 초안은 이 기기의 기록에 없다)
+    const hasDraft = () => Boolean(session?.draftAt || draftOf(question.id));
+
+    // 메모와 초안은 MEMO_MAX자까지다 (firestore.rules도 같은 길이에서 초안을 거부한다).
+    // 다른 곳의 글과 합쳐 길어진 글은 편집기의 글자 수 제한(maxLength)을 거치지 않으므로, 저장할 때 막고 줄이라고 알린다
+    function blockTooLong(text) {
+      if (text.length <= MEMO_MAX) return false;
+      showToast(`${MEMO_MAX.toLocaleString()}자를 넘었어요(${text.length.toLocaleString()}자). 줄인 뒤 저장해 주세요.`, 'error', 5000);
+      editor.focus({ keepSelection: true });
+      return true;
+    }
+
+    // 합친 글을 편집기에 넣었다고 알릴 때 덧붙인다 (합쳐서 MEMO_MAX자를 넘었으면 줄여야 저장된다)
+    const overLimitNote = (text) => (text.length > MEMO_MAX ? ` 합친 글이 ${MEMO_MAX.toLocaleString()}자를 넘어, 줄여야 저장할 수 있어요.` : '');
+
+    // 편집기 아래: 지금 쓰는 글이 초안인지, 저장하지 않은 변경이 있는지
+    function renderDraftState() {
+      if (!editor) return;
+      const unsaved = hasUnsaved();
+      if (session.draftAt) editor.setDraftState(unsaved ? '초안 · 저장하지 않은 변경 있음' : `초안 · ${formatWhen(session.draftAt)} 저장`);
+      else editor.setDraftState(unsaved ? '저장하지 않은 변경 있음' : '');
     }
 
     function openEditor() {
@@ -1121,111 +1146,226 @@
         editor.focus();
         return;
       }
-      const memo = item().memo || '';
-      const draft = readDraft();
-      editorBase = memo;
-      conflictPending = false;
+      session = sessionFromRecords();
       view?.destroy();
       view = null;
       editor = createMemoEditor({
-        text: draft ? draft.text : memo,
-        hasMemo: Boolean(memo),
+        text: session.saved,
+        hasMemo: Boolean(item().memo),
         commitNote: memoCommitNote(question.id),
-        draftRestored: Boolean(draft),
         ariaLabel: `${question.id.toUpperCase()} 메모`,
-        canTempSave: canCommitMemo(),
-        onInput: keepDraft,
+        onInput: renderDraftState,
         onSave: save,
-        onTempSave: tempSave,
-        onCancel: cancel,
+        onSaveDraft: () => saveDraftNow(),
+        onCancel: requestClose,
+        onMore: toggleMenu,
       });
       els.memoBody.replaceChildren(editor.el);
       els.memoEdit.hidden = true;
       editor.mount();
       editor.focus();
       editor.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      renderDraftState();
+      // 이 탭은 기록을 한동안(탭 캐시 10분) 다시 읽지 않아, 다른 기기에서 방금 저장한 초안이나 메모가 아직 없을 수 있다.
+      // 편집기를 열면 새로 읽고, 그사이 쓰기 시작하지 않았으면 최신 글로 바꾼다 (renderRecords). 쓰기 시작했으면 저장할 때 합친다
+      reloadRecords();
     }
 
-    // 편집기를 닫으면 포커스를 편집기를 열었던 자리(메모 고치기 버튼, 메모가 없으면 메모 쓰기 칸)로 돌린다.
-    // 그러지 않으면 편집기와 함께 포커스가 사라져, 키보드로 쓰는 사람은 페이지 처음부터 다시 찾아와야 한다
+    // 메모 자리에서 편집기를 여는 버튼에 포커스를 둔다: 편집 버튼, 초안이 있으면 '이어 쓰기', 메모가 없으면 메모 쓰기 칸.
+    // 편집기나 누른 버튼이 사라진 뒤에 부른다. 그러지 않으면 포커스가 사라져, 키보드로 쓰는 사람은 페이지 처음부터 다시 찾아와야 한다
+    function focusMemoEntry() {
+      const target = els.memoEdit.hidden
+        ? els.memoBody.querySelector('[data-action="draft-resume"], .memo-empty')
+        : els.memoEdit;
+      target?.focus({ preventScroll: true });
+    }
+
     function closeEditor({ fresh = false } = {}) {
+      closeMenu();
+      conflict?.el.remove();
+      conflict = null;
       editor?.destroy();
       editor = null;
+      session = null;
       renderMemo({ fresh });
       renderStatus();
-      (item().memo ? els.memoEdit : els.memoBody.querySelector('.memo-empty'))?.focus({ preventScroll: true });
+      focusMemoEntry();
     }
 
-    // 저장 버튼을 누른 직후 await 없이 saveMemo를 불러야 GitHub 연결 팝업이 막히지 않는다
+    // 저장 직전에 이 초안과 메모를 새로 읽어, 편집기를 연 뒤 다른 곳(다른 기기·탭)에서 바뀌었는지 본다.
+    // 바뀌었으면 그쪽 변경과 합쳐 편집기에 넣고 false를 돌려준다 (저장하지 않는다. 합친 글을 확인하고 다시 저장한다).
+    // 겹친 곳이 있으면 고르는 화면을 연다. 그대로면 true. 읽지 못하면(연결 끊김) 확인 없이 true (변경은 이 기기에 보관했다가 보낸다)
+    // publish: 메모로 저장하려는지 (초안만 저장할 때는 메모가 바뀌었어도 상관없다. 초안은 메모를 덮지 않는다)
+    async function catchUp(text, { publish }) {
+      const latest = await fetchLatest(question.id);
+      if (!editor) return false;
+      if (!latest) return true;
+      const theirs = latest.draft;
+      if ((theirs?.at || 0) !== session.draftAt) {
+        // 다른 곳에서 이 초안을 저장했다
+        if (theirs) return mergeIn(session.saved, text, theirs.text, '다른 곳에서 저장한 초안', { base: theirs.base, draftAt: theirs.at, saved: theirs.text });
+        // 다른 곳에서 이 초안을 메모로 저장했다 (초안은 메모가 되며 지워진다)
+        if (latest.memo !== session.base) return mergeIn(session.saved, text, latest.memo, '다른 곳에서 저장한 메모', { base: latest.memo, draftAt: 0, saved: latest.memo });
+        // 다른 곳에서 이 초안을 지웠다 (메모는 그대로다). 초안 저장이면 초안을 다시 만들고, 저장이면 메모를 바꾸므로 다르게 묻는다
+        const again = await confirmDialog({
+          title: '다른 곳에서 이 초안을 지웠어요',
+          body: !publish
+            ? '지금 쓴 글로 초안을 다시 저장할까요? 저장한 메모는 그대로예요.'
+            : willCommitMemo(question.id, text)
+              ? `지금 쓴 글을 메모로 저장하고 ${store.memoRepo.fullName}에 커밋할까요?`
+              : '지금 쓴 글을 메모로 저장할까요?',
+          yes: publish ? '메모로 저장' : '초안 다시 저장',
+          no: '계속 쓰기',
+          tone: 'primary',
+        });
+        if (!again || !editor) {
+          editor?.focus({ keepSelection: true });
+          return false;
+        }
+        session = { ...session, draftAt: 0, saved: item().memo || '' };
+        return true;
+      }
+      if (publish && latest.memo !== session.base) {
+        return mergeIn(session.base, text, latest.memo, '다른 곳에서 저장한 메모', { ...session, base: latest.memo });
+      }
+      return true;
+    }
+
+    // 세 갈래로 합친다 (memo-merge.js). next: 합친 뒤의 세션 (다른 쪽 글이 새 기준이 된다)
+    function mergeIn(base, mine, theirs, theirsLabel, next) {
+      const result = mergeMemo(base, mine, theirs);
+      const previous = session;
+      session = next;
+      if (result.clean) {
+        if (result.text === mine) return true; // 다른 쪽 변경이 이미 들어 있다. 그대로 저장한다
+        editor.setText(result.text);
+        renderDraftState();
+        editor.focus({ keepSelection: true });
+        showToast(`다른 곳에서 고친 내용을 합쳤어요. 확인한 뒤 다시 저장해 주세요.${overLimitNote(result.text)}`, 'info', 5000);
+        return false;
+      }
+      showConflict(result.parts, theirsLabel, previous);
+      return false;
+    }
+
+    // 겹친 곳 고르기: 편집기를 잠깐 숨기고 그 자리에 연다. 취소하면 합치기 전의 세션으로 돌아간다
+    // (그대로 다시 저장하면 다시 겹친 것을 알려준다)
+    function showConflict(parts, theirsLabel, previous) {
+      const hide = () => {
+        conflict?.el.remove();
+        conflict = null;
+        if (editor) editor.el.hidden = false;
+      };
+      conflict = createConflictView({
+        parts,
+        theirsLabel,
+        onDone(text) {
+          hide();
+          editor.setText(text);
+          renderDraftState();
+          editor.focus();
+          showToast(`고른 글을 합쳐 편집기에 넣었어요. 다듬은 뒤 다시 저장해 주세요.${overLimitNote(text)}`, 'info', 5000);
+        },
+        onCancel() {
+          hide();
+          session = previous;
+          renderDraftState();
+          editor?.focus({ keepSelection: true });
+        },
+      });
+      closeMenu();
+      editor.el.hidden = true;
+      els.memoBody.prepend(conflict.el);
+      conflict.focus();
+    }
+
+    // 초안 저장 (Ctrl+S, 더보기, 닫을 때 묻는 창): 메모는 그대로 두고 초안만 계정에 저장한다. 편집기는 열어 둔다.
+    // 습관처럼 자주 누르는 키라서 쓰는 중에 막지 않는다 (작성 칸을 잠그지 않는다). 그사이 더 쓴 글은 저장하지 않은 변경으로 남는다.
+    // 저장했거나 저장할 것이 없으면 true
+    let draftSaving = null;
+
+    function saveDraftNow() {
+      draftSaving ??= (async () => {
+        if (!editor || saving || conflict) return false;
+        const text = editorText();
+        if (!text) {
+          editor.setDraftState('빈 글은 초안으로 저장하지 않아요');
+          return false;
+        }
+        if (text === session.saved) {
+          editor.setDraftState(session.draftAt ? '초안 · 바뀐 내용 없음' : '바뀐 내용 없음');
+          return true;
+        }
+        if (blockTooLong(text)) return false;
+        editor.setDraftState('초안 저장 중…');
+        if (!(await catchUp(text, { publish: false }))) return false;
+        const result = await saveDraft(question.id, text, session.base);
+        if (!result.draft) {
+          // 글은 위에서 확인했으니, 기준이 된 저장된 메모가 MEMO_MAX자를 넘는다 (이 제한이 생기기 전에 저장한 긴 메모).
+          // 메모로 저장하면 기준이 지금 글로 바뀌어 다시 초안을 저장할 수 있다
+          renderDraftState();
+          showToast(`저장된 메모가 ${MEMO_MAX.toLocaleString()}자를 넘어 초안으로 저장할 수 없어요. 메모로 저장해 주세요.`, 'error', 5000);
+          return false;
+        }
+        if (!editor) return result.saved;
+        session = { ...session, draftAt: result.draft.at, saved: result.draft.text };
+        editor.setDraftState(result.saved ? '초안을 저장했어요' : '초안 · 이 기기에 보관했어요 · 연결되면 올려요');
+        renderStatus();
+        return true;
+      })().finally(() => {
+        draftSaving = null;
+      });
+      return draftSaving;
+    }
+
+    // 저장: 초안을 메모로 만들고 GitHub에 커밋한다 (초안은 지워진다).
     // shortcut: Ctrl+Enter로 저장했는지 (저장 버튼이면 false)
     async function save({ shortcut = false } = {}) {
-      if (tempSaving) await tempSaving; // 방금 누른 Ctrl+S가 끝난 뒤에 저장한다
-      if (!editor || saving) return;
-      const text = editor.getText();
+      if (draftSaving) await draftSaving; // 방금 누른 Ctrl+S가 끝난 뒤에 저장한다
+      if (!editor || saving || conflict) return;
+      closeMenu();
+      const text = editorText();
       const memo = item().memo || '';
-      if (!text.trim()) {
+      const draft = hasDraft();
+      if (!text) {
         // 비우고 저장하면 지우는 것이므로 지울지 묻는다
-        if (memo) remove();
+        if (memo) removeMemo();
+        else if (draft) removeDraft();
         else closeEditor();
         return;
       }
-      // 바뀐 것이 없어도 아직 올리지 않은 메모(임시저장)면 저장 버튼으로 커밋한다
-      if (!isEditorDirty() && !isUncommitted(question.id)) {
-        dropDraft();
+      // 바뀐 것도, 지울 초안도 없으면 닫는다. 아직 올리지 않은 메모면 저장 버튼으로 커밋한다
+      if (text === memo && !draft && !isUncommitted(question.id)) {
         closeEditor();
         return;
       }
+      if (blockTooLong(text)) return;
       // Ctrl+Enter는 쓰다가 잘못 누르기 쉬우므로(Ctrl+S를 누른 손을 떼기 전에 Enter로 줄을 바꾸는 등) GitHub에 커밋할 때는 한 번 더 묻는다.
-      // 커밋은 저장소 기록에 남아 되돌리기 어렵지만, 커밋하지 않는 저장은 편집기를 다시 열어 이어 쓰면 되므로 묻지 않는다.
-      // 저장 버튼은 일부러 누르는 것이라 묻지 않는다. 확인 창의 '커밋'을 누른 직후라 GitHub 연결 팝업은 막히지 않는다
+      // 커밋은 저장소 기록에 남아 되돌리기 어렵지만, 초안 저장은 메모를 바꾸지 않으므로 묻지 않는다. 저장 버튼은 일부러 누르는 것이라 묻지 않는다
       if (shortcut && canCommitMemo() && !(await confirmCommit())) return;
-      // 기록이 낡았을 때만 기다린다. 대개는 기다리지 않고 바로 saveMemo를 부른다 (GitHub 연결 팝업)
-      if (needsConflictCheck() && !(await confirmNoConflict(text))) return;
       saving = true;
       editor.setBusy(true);
-      const result = await saveMemo(question.id, text, { title: question.title });
-      saving = false;
-      if (result.saved) dropDraft();
-      closeEditor({ fresh: true });
-    }
-
-    // 임시저장 (Ctrl+S, 터치 기기의 임시저장 버튼): GitHub에 커밋하지 않고 계정(또는 이 브라우저)에만 저장하고, 편집기는 열어 둔 채 계속 쓴다.
-    // 습관처럼 자주 누르는 키라서 쓰는 중에 막지 않는다 (작성 칸을 잠그지 않는다). 그사이 더 쓴 글은 다음 저장 때 들어간다
-    let tempSaving = null;
-
-    function tempSave() {
-      if (!editor || saving || tempSaving) return;
-      const state = () => (canCommitMemo() ? '임시저장됨 · 아직 커밋 전' : '저장됨');
-      const text = editor.getText();
-      if (!text.trim()) return; // 빈 글을 임시저장하면 메모를 지우게 되므로 하지 않는다
-      if (!isEditorDirty()) {
-        editor.setDraftState(isUncommitted(question.id) || !canCommitMemo() ? state() : '바뀐 내용 없음');
+      // GitHub 토큰이 없으면 연결 팝업을 열어야 하는데, 브라우저는 누른 직후에만 팝업을 허락한다 (Safari는 1초 안팎).
+      // 그래서 다른 곳의 변경을 새로 읽기(네트워크) 전에 토큰부터 구해 둔다. 토큰이 있으면 팝업 없이 바로 끝난다.
+      // 겹친 곳이 있어 이번에 저장하지 않게 되어도 연결은 그대로 남아 다음 저장에 쓰인다
+      const githubToken = willCommitMemo(question.id, text) ? getGithubToken() : null;
+      githubToken?.catch(() => {}); // 실패는 saveMemo가 알린다. 저장하지 않고 끝나도 처리하지 않은 거부로 남지 않게 한다
+      const ok = await catchUp(text, { publish: true });
+      if (!ok || !editor) {
+        saving = false;
+        editor?.setBusy(false);
         return;
       }
-      tempSaving = (async () => {
-        if (needsConflictCheck() && !(await confirmNoConflict(text))) return;
-        editor?.setDraftState('저장 중…');
-        const result = await saveMemo(question.id, text, { title: question.title, commit: false });
-        if (!editor) return;
-        if (result.saved) {
-          editorBase = item().memo || '';
-          // 저장한 뒤에 더 쓰지 않았으면 초안은 필요 없다 (더 썼으면 초안이 그 글을 계속 보관한다)
-          if (!isEditorDirty()) dropDraft();
-          editor.setDraftState(state());
-          editor.setHasMemo(true);
-        } else {
-          editor.setDraftState('임시저장하지 못했어요');
-        }
-        renderStatus();
-      })().finally(() => {
-        tempSaving = null;
-      });
+      // 초안을 메모로 저장했으니 초안은 지운다 (다른 곳의 초안을 합쳤다면 그 초안도)
+      await saveMemo(question.id, editorText(), { title: question.title, dropDraft: hasDraft(), githubToken });
+      saving = false;
+      closeEditor({ fresh: true });
     }
 
     async function confirmCommit() {
       const yes = await confirmDialog({
         title: 'GitHub에 커밋할까요?',
-        body: `${store.memoRepo.fullName}의 ${question.id}.md로 커밋하고 편집기를 닫아요. 커밋하지 않고 저장만 하려면 ${MOD}+S로 임시저장하세요.`,
+        body: `${store.memoRepo.fullName}의 ${question.id}.md로 커밋하고 편집기를 닫아요. 메모는 그대로 두고 초안으로만 저장하려면 ${MOD}+S를 누르세요.`,
         yes: '커밋',
         no: '계속 쓰기',
         tone: 'primary',
@@ -1237,76 +1377,40 @@
       return Boolean(editor);
     }
 
-    // 다른 탭이 기록을 썼거나(watchOtherTabs가 loadedAt을 0으로 만든다) 기록을 읽은 지 오래됐으면, 저장 직전에 최신 기록을 읽는다.
-    // 그사이 다른 곳에서 이 메모를 저장했으면 덮어쓸지 묻는다
-    // 한 번 알린 충돌은 '덮어쓰기'를 고를 때까지 저장할 때마다 다시 묻는다
-    let conflictPending = false;
-    const isStale = () => Date.now() - store.loadedAt >= STALE_AFTER && store.canReload;
-    const needsConflictCheck = () => conflictPending || isStale();
-
-    async function confirmNoConflict(text) {
-      if (isStale()) {
-        saving = true;
-        editor.setBusy(true);
-        try {
-          await store.refresh({ fresh: true });
-        } catch (err) {
-          console.error(err); // 읽지 못하면 확인 없이 저장한다 (지금까지와 같다)
-        }
-        saving = false;
-        editor?.setBusy(false);
-        renderLevel();
-        renderStar();
-        renderStatus();
+    // 닫기 (닫기 버튼, Esc): 저장하지 않은 변경이 있으면 초안으로 저장할지, 버릴지 묻는다 (브라우저의 페이지 이탈 경고와 같다)
+    async function requestClose() {
+      if (!editor || saving || conflict) return;
+      closeMenu();
+      if (!hasUnsaved()) {
+        closeEditor();
+        return;
       }
-      const latest = item().memo || '';
-      if (latest === editorBase || latest === normalizeMemo(text)) {
-        conflictPending = false;
-        return true;
+      if (!editorText()) {
+        const discard = await confirmDialog({ title: '쓰던 내용을 버릴까요?', body: '저장하지 않은 변경은 사라져요.', yes: '버리기', no: '계속 쓰기' });
+        if (discard) closeEditor();
+        else editor?.focus({ keepSelection: true });
+        return;
       }
-      const overwrite = await confirmDialog({
-        title: '다른 곳에서 이 메모가 바뀌었어요',
-        body: '편집기를 연 뒤 다른 탭이나 기기에서 이 메모를 저장했어요. 지금 쓴 내용으로 덮어쓸까요?',
-        yes: '덮어쓰기',
+      const answer = await confirmDialog({
+        title: '저장하지 않은 변경이 있어요',
+        body: '초안으로 저장하면 메모는 그대로 두고, 다음에 이 기기나 다른 기기에서 이어 쓸 수 있어요.',
+        yes: '초안 저장하고 닫기',
         no: '계속 쓰기',
+        alt: '변경 버리기',
+        tone: 'primary',
       });
-      if (!overwrite) {
-        conflictPending = true;
-        editor?.focus({ keepSelection: true });
-        return false;
-      }
-      conflictPending = false;
-      editorBase = latest;
-      return Boolean(editor);
+      if (answer === 'alt') closeEditor();
+      else if (answer === 'yes' && (await saveDraftNow())) closeEditor();
+      else editor?.focus({ keepSelection: true });
     }
 
-    async function cancel() {
-      if (!editor || saving) return;
-      if (isEditorDirty()) {
-        const discard = await confirmDialog({
-          title: '쓰던 내용을 버릴까요?',
-          body: '저장하지 않은 변경은 사라져요.',
-          yes: '버리기',
-          no: '계속 쓰기',
-        });
-        if (!discard) {
-          editor?.focus({ keepSelection: true });
-          return;
-        }
-      }
-      dropDraft();
-      closeEditor();
-    }
-
-    // 메모 지우기: 작성 칸을 비운 채 저장하면 묻는다 (따로 삭제 버튼은 없다).
-    // GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다
-    async function remove() {
-      if (!editor || saving) return;
+    // 초안 지우기 (더보기, 질문 화면의 '초안 삭제'): 메모는 그대로다
+    async function removeDraft() {
+      if (saving) return;
+      closeMenu();
       const yes = await confirmDialog({
-        title: '메모를 삭제할까요?',
-        body: canCommitMemo()
-          ? `이 질문의 메모가 지워지고, ${store.memoRepo.fullName}의 ${question.id}.md 파일도 삭제돼요. 지난 커밋 기록은 GitHub에 남아요.`
-          : '이 질문의 메모가 지워지고 되돌릴 수 없어요.',
+        title: '초안을 삭제할까요?',
+        body: '이 초안이 지워져요. 저장한 메모는 그대로예요.',
         yes: '삭제',
         no: '취소',
       });
@@ -1316,17 +1420,127 @@
       }
       saving = true;
       editor?.setBusy(true);
-      await saveMemo(question.id, '', { title: question.title });
+      await deleteDraft(question.id);
       saving = false;
-      dropDraft();
+      if (editor) closeEditor();
+      else {
+        renderMemo();
+        focusMemoEntry(); // 누른 '초안 삭제' 버튼이 초안 알림과 함께 사라졌다
+      }
+      renderStatus();
+      showToast('초안을 삭제했어요.');
+    }
+
+    // 메모 지우기 (더보기, 작성 칸을 비운 채 저장): 초안도 함께 지운다.
+    // GitHub에 커밋하는 계정이면 저장소의 {id}.md 파일도 지운다. 지난 커밋은 저장소 기록에 남는다
+    async function removeMemo() {
+      if (!editor || saving) return;
+      closeMenu();
+      const draftToo = hasDraft() ? ' 초안도 함께 지워져요.' : '';
+      const yes = await confirmDialog({
+        title: '메모를 삭제할까요?',
+        body: canCommitMemo()
+          ? `이 질문의 메모가 지워지고, ${store.memoRepo.fullName}의 ${question.id}.md 파일도 삭제돼요. 지난 커밋 기록은 GitHub에 남아요.${draftToo}`
+          : `이 질문의 메모가 지워지고 되돌릴 수 없어요.${draftToo}`,
+        yes: '삭제',
+        no: '취소',
+      });
+      if (!yes) {
+        editor?.focus({ keepSelection: true });
+        return;
+      }
+      saving = true;
+      editor?.setBusy(true);
+      await saveMemo(question.id, '', { title: question.title, dropDraft: hasDraft() });
+      saving = false;
       closeEditor();
     }
 
-    // GitHub 커밋만 실패했던 메모를 다시 올린다
+    // GitHub 커밋만 실패했던 메모를 다시 올린다. 메모만 올리고, 쓰던 초안은 그대로 둔다 (saveMemo에 dropDraft를 주지 않는다)
     function recommit() {
       const memo = item().memo || '';
       if (!memo) return;
-      saveMemo(question.id, memo, { title: question.title }).then(() => renderMemo());
+      saveMemo(question.id, memo, { title: question.title }).then(() => {
+        if (!editor) renderMemo();
+      });
+    }
+
+    // ---------- 편집기의 더보기 ----------
+    // 가끔 쓰는 것: 초안 저장(Ctrl+S가 없는 터치 기기), 초안 삭제, 메모 삭제. 편집기 아래 버튼 위로 펼친다
+
+    function toggleMenu(button) {
+      if (menu) {
+        closeMenu();
+        return;
+      }
+      const text = editorText();
+      const items = [
+        { label: '초안 저장', hint: `메모는 그대로 두고 저장해요 · ${MOD}+S`, enabled: Boolean(text) && hasUnsaved(), run: saveDraftNow },
+        { label: '초안 삭제', hint: '저장한 메모는 그대로예요', enabled: hasDraft(), run: removeDraft, danger: true },
+        {
+          label: '메모 삭제',
+          hint: canCommitMemo() ? 'GitHub의 파일과 초안도 함께 지워져요' : '초안도 함께 지워져요',
+          enabled: Boolean(item().memo),
+          run: removeMemo,
+          danger: true,
+        },
+      ];
+      const list = document.createElement('div');
+      list.className = 'memo-more';
+      list.setAttribute('role', 'menu');
+      list.setAttribute('aria-label', '더보기');
+      for (const entry of items) {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = `memo-more-item${entry.danger ? ' is-danger' : ''}`;
+        option.setAttribute('role', 'menuitem');
+        option.disabled = !entry.enabled;
+        const label = document.createElement('span');
+        label.className = 'memo-more-label';
+        label.textContent = entry.label;
+        const hint = document.createElement('span');
+        hint.className = 'memo-more-hint';
+        hint.textContent = entry.hint;
+        option.append(label, hint);
+        option.addEventListener('click', () => {
+          closeMenu({ focus: false });
+          entry.run();
+        });
+        list.append(option);
+      }
+      // 목록 안에서는 위아래 화살표로 옮기고, Esc·Tab이면 닫는다 (Esc가 편집기 닫기로 넘어가지 않게 막는다)
+      list.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Tab') {
+          e.preventDefault();
+          e.stopPropagation();
+          closeMenu();
+          return;
+        }
+        const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        const options = [...list.querySelectorAll('.memo-more-item:not(:disabled)')];
+        const index = options.indexOf(document.activeElement);
+        options[(index + step + options.length) % options.length]?.focus();
+      });
+      button.parentElement.append(list);
+      button.setAttribute('aria-expanded', 'true');
+      menu = { list, button };
+      list.querySelector('.memo-more-item:not(:disabled)')?.focus();
+      setTimeout(() => document.addEventListener('pointerdown', onOutside, true));
+    }
+
+    function onOutside(e) {
+      if (menu && !menu.list.contains(e.target) && !menu.button.contains(e.target)) closeMenu({ focus: false });
+    }
+
+    function closeMenu({ focus = true } = {}) {
+      if (!menu) return;
+      document.removeEventListener('pointerdown', onOutside, true);
+      menu.list.remove();
+      menu.button.setAttribute('aria-expanded', 'false');
+      if (focus) menu.button.focus();
+      menu = null;
     }
 
     // ---------- 확인 창 ----------
@@ -1336,7 +1550,7 @@
       dialog.addEventListener('keydown', (e) => {
         const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
         if (!step || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-        const buttons = [...dialog.querySelectorAll('.confirm-buttons button')];
+        const buttons = [...dialog.querySelectorAll('.confirm-buttons button:not([hidden])')];
         const index = buttons.indexOf(document.activeElement);
         if (index === -1) return;
         e.preventDefault();
@@ -1347,7 +1561,8 @@
     bindDialogArrowKeys(els.confirm);
 
     // tone: '예' 버튼 색. 지우거나 버리는 일은 빨강(danger), 저장처럼 해가 없는 일은 초록(primary)
-    function confirmDialog({ title, body, yes, no, tone = 'danger' }) {
+    // alt를 주면 왼쪽에 버튼이 하나 더 생기고(빨간 글씨, 예: 변경 버리기), 'yes' | 'no' | 'alt'로 답한다. 없으면 true | false
+    function confirmDialog({ title, body, yes, no, alt = '', tone = 'danger' }) {
       const dialog = els.confirm;
       dialog.querySelector('#confirm-title').textContent = title;
       dialog.querySelector('#confirm-body').textContent = body;
@@ -1355,27 +1570,31 @@
       yesButton.textContent = yes;
       yesButton.className = `btn btn-${tone}`;
       dialog.querySelector('[data-answer="no"]').textContent = no;
+      const altButton = dialog.querySelector('[data-answer="alt"]');
+      altButton.textContent = alt;
+      altButton.hidden = !alt;
+      dialog.querySelector('.confirm-buttons').classList.toggle('has-alt', Boolean(alt));
       return new Promise((resolve) => {
         const finish = (answer) => {
           dialog.removeEventListener('click', onClick);
           dialog.removeEventListener('cancel', onCancel);
           dialog.close();
-          resolve(answer);
+          resolve(alt ? answer : answer === 'yes');
         };
         const onClick = (e) => {
           const answer = e.target.closest('[data-answer]')?.dataset.answer;
           if (answer) {
-            finish(answer === 'yes');
+            finish(answer);
             return;
           }
           // 창 바깥(배경)을 누르면 닫는다
           const rect = dialog.getBoundingClientRect();
           const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-          if (!inside) finish(false);
+          if (!inside) finish('no');
         };
         const onCancel = (e) => {
           e.preventDefault();
-          finish(false);
+          finish('no');
         };
         dialog.addEventListener('click', onClick);
         dialog.addEventListener('cancel', onCancel);
@@ -1391,17 +1610,30 @@
       renderStar();
       renderStatus();
       if (!editor) renderMemo();
-      else if (!isEditorDirty()) {
-        // 고치지 않은 편집기는 새로 읽은 메모로 바꾸고, 이것을 고치기 시작한 메모로 삼는다
-        editorBase = item().memo || '';
-        editor.setText(editorBase);
+      else if (!hasUnsaved() && !conflict) {
+        // 고치지 않은 편집기는 새로 읽은 초안(없으면 메모)으로 바꾸고, 이것을 기준으로 삼는다
+        const previous = session;
+        session = sessionFromRecords();
+        editor.setText(session.saved);
+        editor.setHasMemo(Boolean(item().memo));
+        renderDraftState();
+        const note = switchedNote(previous, session);
+        if (note) showToast(note, 'info', 4000);
       }
+    }
+
+    // 고치지 않은 편집기를 새로 읽은 글로 바꿨을 때 알린다 (바뀐 것이 없으면 빈 글)
+    function switchedNote(previous, next) {
+      if (next.saved === previous.saved && next.draftAt === previous.draftAt) return '';
+      if (next.draftAt && next.draftAt !== previous.draftAt) return '다른 곳에서 저장한 초안으로 바꿨어요.';
+      if (!next.draftAt && previous.draftAt) return '다른 곳에서 이 초안을 메모로 저장했거나 지워서, 지금 메모로 바꿨어요.';
+      return '다른 곳에서 바뀐 메모로 바꿨어요.';
     }
 
     // 다시 불러온 기록으로 화면을 고친다. 고치던 메모가 있거나 쓰는 중이면 다음 기회로 미룬다.
     // fresh가 아니면 탭 단위 캐시가 있을 때 그것을 읽는다 (질문 목록에서 저장한 기록도 캐시에 들어 있다)
     async function reloadRecords({ fresh = true } = {}) {
-      if (!ready || account.mode === 'denied' || !store.canReload || isEditorDirty()) return;
+      if (!ready || account.mode === 'denied' || !store.canReload || hasUnsaved()) return;
       try {
         await store.refresh({ fresh });
       } catch (err) {
@@ -1447,10 +1679,7 @@
         const action = e.target.closest('[data-action]')?.dataset.action;
         if (action === 'memo-write' || action === 'draft-resume') openEditor();
         else if (action === 'memo-recommit') recommit();
-        else if (action === 'draft-discard') {
-          dropDraft();
-          renderMemo();
-        }
+        else if (action === 'draft-delete') removeDraft();
       });
 
       // 제목 아래 상태를 누르면 부드럽게 내려간다 (주소에 #memo 등을 남겨 새로고침해도 그 자리로 온다)
@@ -1465,7 +1694,7 @@
       // 질문을 옮기기 전에 아직 쓰지 않은 변경을 먼저 저장한다 (저장이 실패하는 중이면 기다리지 않는다. 변경은 이 기기에 보관돼 있다)
       document.addEventListener('click', async (e) => {
         const link = e.target.closest('a.q-link');
-        if (!link || !store.busy || saveErrorShown || account.mode === 'denied' || isEditorDirty()) return;
+        if (!link || !store.busy || saveErrorShown || account.mode === 'denied' || hasUnsaved()) return;
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
         await Promise.race([
@@ -1490,10 +1719,10 @@
         if (e.persisted) reloadRecords({ fresh: false });
       });
 
-      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 저장하지 않은 메모와
+      // 쓰지 못한 변경은 이 기기에 보관되므로, 붙잡는 건 초안으로도 저장하지 않은 변경과
       // 저장 공간이 부족해 이 기기에도 보관하지 못한 변경뿐이다
       window.addEventListener('beforeunload', (e) => {
-        if (isEditorDirty() || (store.busy && !store.pendingKept)) {
+        if (hasUnsaved() || (store.busy && !store.pendingKept)) {
           e.preventDefault();
           e.returnValue = '';
         }
@@ -1521,6 +1750,9 @@
         return;
       }
       ready = true;
+      // 예전에 이 브라우저에 저절로 보관하던 쓰던 메모가 남아 있으면 초안으로 옮긴다
+      const moved = moveOldDrafts();
+      if (moved) showToast(`이 브라우저에 남아 있던 쓰던 메모 ${moved}개를 초안으로 옮겼어요.`, 'info', 4000);
       renderRecords();
       bindEvents();
       await view?.ready;

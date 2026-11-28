@@ -2,6 +2,7 @@
 // - createMemoView: 메모를 마크다운으로 그리고, 길면 접어 두었다가 펼치고 접을 수 있게 한다
 // - createMemoEditor: 작성 / 미리보기 / 나란히 보기, 서식 버튼, 단축키, 목록 이어 쓰기를 갖춘 편집기
 import { MEMO_MAX, loadMarkdown, renderMarkdown, readStore, writeStore } from './memo-core.js';
+import { joinParts } from './memo-merge.js';
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const MOD = IS_MAC ? '⌘' : 'Ctrl'; // 단축키 안내에 쓰는 이름 (질문 화면의 확인 창도 쓴다)
@@ -164,7 +165,7 @@ const FORMATS = [
 
 let editorCount = 0; // 편집기마다 다른 id를 붙이려고 센다
 
-const HINT = `${MOD}+S 임시저장 · ${MOD}+Enter로 저장 · Esc로 취소`;
+const HINT = `${MOD}+S 초안 저장 · ${MOD}+Enter로 저장 · Esc로 닫기`;
 // 저장된 메모가 있는데 작성 칸을 비우면 안내 자리에 띄운다 (메모는 비운 채 저장해서 지운다. 따로 삭제 버튼을 두지 않는다)
 const HINT_CLEARING = '비운 채 저장하면 메모를 지워요';
 
@@ -178,19 +179,18 @@ const LINE_PREFIX = {
   quote: { match: /^>\s?/, strip: null },
 };
 
-// 편집기의 바깥 동작(저장, 임시저장, 취소, 입력할 때)은 화면이 넘겨준다.
+// 편집기의 바깥 동작(저장, 초안 저장, 닫기, 더보기, 입력할 때)은 화면이 넘겨준다.
 // 메모를 지우는 것도 저장이다: 비운 채 저장하면 화면이 지울지 묻고 지운다
 export function createMemoEditor({
   text = '',
   hasMemo = false, // 저장된 메모가 있는지 (비우면 지워진다고 알린다)
   commitNote = '',
-  draftRestored = false,
   ariaLabel = '메모',
-  canTempSave = false, // 임시저장이 따로 뜻이 있는지 (GitHub에 커밋하는 계정일 때만 버튼을 둔다)
   onInput = () => {},
   onSave = () => {}, // 저장 버튼은 onSave(), Ctrl+Enter는 onSave({ shortcut: true })로 부른다
-  onTempSave = () => {}, // Ctrl+S, 터치 기기의 임시저장 버튼: 커밋하지 않고 저장, 편집기는 열어 둔다
-  onCancel = () => {},
+  onSaveDraft = () => {}, // Ctrl+S: 메모는 그대로 두고 초안만 저장한다. 편집기는 열어 둔다
+  onCancel = () => {}, // 닫기 버튼, Esc
+  onMore = () => {}, // 더보기 버튼 (누른 버튼을 넘긴다. 펼칠 목록은 화면이 그린다)
 } = {}) {
   const el = document.createElement('div');
   el.className = 'memo-editor';
@@ -224,8 +224,10 @@ export function createMemoEditor({
         <span class="memo-hint" aria-live="polite"></span>
       </div>
       <div class="memo-editor-buttons">
-        <button type="button" class="btn btn-sm memo-tempsave" data-action="tempsave" title="GitHub에 커밋하지 않고 저장">임시저장</button>
-        <button type="button" class="btn btn-sm" data-action="cancel">취소</button>
+        <button type="button" class="btn btn-sm btn-icon memo-more-btn" data-action="more" aria-label="더보기" aria-haspopup="menu" aria-expanded="false" title="더보기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.5" y="10.5" width="3" height="3" rx="0.6"></rect><rect x="10.5" y="10.5" width="3" height="3" rx="0.6"></rect><rect x="17.5" y="10.5" width="3" height="3" rx="0.6"></rect></svg>
+        </button>
+        <button type="button" class="btn btn-sm" data-action="cancel" title="닫기 (Esc)">닫기</button>
         <button type="button" class="btn btn-sm btn-primary" data-action="save" title="저장 (${MOD}+Enter)">저장</button>
       </div>
     </div>
@@ -238,7 +240,6 @@ export function createMemoEditor({
   const draftState = el.querySelector('.memo-draft-state');
   const saveButton = el.querySelector('[data-action="save"]');
   const hint = el.querySelector('.memo-hint');
-  el.querySelector('[data-action="tempsave"]').hidden = !canTempSave;
   const splitButton = el.querySelector('[data-mode="split"]');
   const commit = el.querySelector('.memo-commit-note');
   const toolbar = el.querySelector('.memo-toolbar');
@@ -299,7 +300,6 @@ export function createMemoEditor({
   input.setAttribute('aria-describedby', `memo-keys-${uid}`); // 화면 읽기 도구에 작성 칸의 키를 알린다 (화면에는 보이지 않는다)
   commit.textContent = commitNote;
   commit.hidden = !commitNote;
-  if (draftRestored) draftState.textContent = '저장하지 않은 초안을 불러왔어요';
 
   let preferred = ['write', 'preview', 'split'].includes(readStore('localStorage', MODE_KEY)) ? readStore('localStorage', MODE_KEY) : 'split';
   let wide = false;
@@ -308,9 +308,9 @@ export function createMemoEditor({
   let busy = false;
   let shiftEnter = false;
   let pendingTab = null; // 한글 조합 중에 누른 Tab (true면 Shift+Tab)
-  let pendingTempSave = false; // 한글 조합 중에 누른 Ctrl+S
+  let pendingDraftSave = false; // 한글 조합 중에 누른 Ctrl+S
   let pendingPreviewToggle = false; // 한글 조합 중에 누른 Ctrl+Shift+P
-  let savedMemo = hasMemo; // 저장된 메모가 있는지 (새 메모를 처음 임시저장하면 생긴다)
+  let savedMemo = hasMemo; // 저장된 메모가 있는지 (비우고 저장하면 지워진다고 알린다)
   // 미리보기를 끄면 돌아갈 보기 (작성 또는 나란히). 사용자가 고른 보기를 기억한다
   let lastEditMode = preferred === 'preview' ? 'write' : preferred;
 
@@ -709,7 +709,7 @@ export function createMemoEditor({
     if (target.dataset.mode) setMode(target.dataset.mode);
     else if (target.dataset.format) applyFormat(target.dataset.format);
     else if (target.dataset.action === 'save') onSave();
-    else if (target.dataset.action === 'tempsave') onTempSave();
+    else if (target.dataset.action === 'more') onMore(target);
     else if (target.dataset.action === 'cancel') onCancel();
   });
 
@@ -734,12 +734,12 @@ export function createMemoEditor({
       else indentLines(e.shiftKey);
       return;
     }
-    // Ctrl+S: 브라우저의 '페이지 저장' 대신 임시저장. 한글 조합 중이면 글자가 확정된 뒤에 저장한다
+    // Ctrl+S: 브라우저의 '페이지 저장' 대신 초안 저장. 한글 조합 중이면 글자가 확정된 뒤에 저장한다
     if (isShortcut(e, 's')) {
       e.preventDefault();
       if (busy) return;
-      if (e.isComposing || e.keyCode === 229) pendingTempSave = true;
-      else onTempSave();
+      if (e.isComposing || e.keyCode === 229) pendingDraftSave = true;
+      else onSaveDraft();
       return;
     }
     // Ctrl+Shift+P: 미리보기로. 한글 조합 중이면 글자가 확정된 뒤에 바꾼다 (작성 칸을 숨기기 전에 마지막 글자를 넣는다)
@@ -765,7 +765,7 @@ export function createMemoEditor({
     }
   });
 
-  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 취소, Ctrl+Enter로 저장, Ctrl+S로 임시저장, Ctrl+Shift+P로 미리보기 전환을 한다
+  // 미리보기 중이나 버튼에 포커스가 있을 때도 Esc로 닫기, Ctrl+Enter로 저장, Ctrl+S로 초안 저장, Ctrl+Shift+P로 미리보기 전환을 한다
   el.addEventListener('keydown', (e) => {
     if (e.target === input) return;
     if (isToolbarKey(e)) {
@@ -787,16 +787,16 @@ export function createMemoEditor({
       e.preventDefault();
       onSave({ shortcut: true });
     } else if (isShortcut(e, 's')) {
-      onTempSave();
+      onSaveDraft();
     }
   });
 
   input.addEventListener('beforeinput', continueList);
 
   input.addEventListener('compositionend', () => {
-    if (pendingTempSave) {
-      pendingTempSave = false;
-      setTimeout(onTempSave);
+    if (pendingDraftSave) {
+      pendingDraftSave = false;
+      setTimeout(onSaveDraft);
     }
     if (pendingPreviewToggle) {
       pendingPreviewToggle = false;
@@ -858,7 +858,7 @@ export function createMemoEditor({
     setDraftState(textValue) {
       draftState.textContent = textValue;
     },
-    // 새 메모를 처음 임시저장하면 저장된 메모가 생긴다 (이제 비우면 지워진다고 알린다)
+    // 저장된 메모가 생기거나 없어지면 알린다 (비우면 지워진다는 안내를 바꾼다)
     setHasMemo(value) {
       savedMemo = value;
       updateHint();
@@ -873,6 +873,262 @@ export function createMemoEditor({
       resizeObserver.disconnect();
       window.removeEventListener('resize', onWindowResize);
       clearTimeout(previewTimer);
+    },
+  };
+}
+
+// ---------- 겹친 곳 고르기 ----------
+// 같은 글을 다른 곳에서도 고쳐 서로 겹친 곳(memo-merge.js의 충돌)마다, 남길 글을 고르게 한다.
+// GitHub의 충돌 해결 화면처럼 메모 원문 전체를 줄 번호와 함께 한 상자에 보이고, 겹친 곳에 충돌 표시를 둔다:
+//   <<<<<<< 현재 · 이 기기에서 쓴 글     [현재 수락]
+//   (이 기기의 줄)
+//   =======                              [모두 수락]
+//   (다른 곳의 줄)
+//   >>>>>>> 수신 · 다른 곳에서 저장한 초안 [수신 수락]
+// 버튼 문구는 VS Code 한국어판을 따른다 (현재 · 수신 · 모두). 버튼이 놓인 줄이 곧 고르는 쪽이다.
+// 겹친 곳 안에서 두 글이 다른 낱말은 진하게 칠하고, 한쪽만 고쳐 저절로 들어간 줄은 줄 번호 옆에 색 선을 긋는다.
+// 다 고르면 합친 글을 편집기에 넣는다. 저장은 하지 않는다 (편집기에서 다듬은 뒤 다시 저장한다).
+// parts: mergeMemo의 parts, theirsLabel: 다른 쪽 글의 이름 (예: 다른 곳에서 저장한 초안)
+let conflictCount = 0;
+
+const CONFLICT_MINE = '이 기기에서 쓴 글';
+const LINE_ORIGIN = { mine: '이 기기에서 고친 줄', theirs: '다른 곳에서 고친 줄', both: '두 곳에서 똑같이 고친 줄' };
+
+// 낱말(글자·숫자가 이어진 덩어리, 한국어는 어절), 띄어쓰기, 줄바꿈, 기호 하나를 한 토막으로 나눈다
+const WORD_TOKEN = /[\p{L}\p{N}_]+|\n|[^\S\n]+|[^\p{L}\p{N}_\s]/gu;
+const isSpaceToken = (token) => /^\s+$/.test(token);
+const WORD_DIFF_MAX = 2_000_000; // 비교 표 칸 수가 이보다 크면(아주 긴 두 글) 낱말을 칠하지 않는다
+const WORD_DIFF_SIMILAR = 0.3; // 공통 낱말이 짧은 쪽의 이만큼도 안 되면 거의 다 바뀐 것이라 칠하지 않는다
+
+// 겹친 곳의 두 쪽을 낱말 단위로 비교해, 쪽마다 줄별 토막 [{ text, changed }]을 돌려준다. 칠할 만하지 않으면 null
+function diffWords(mineLines, theirLines) {
+  if (!mineLines.length || !theirLines.length) return null;
+  const a = mineLines.join('\n').match(WORD_TOKEN) || [];
+  const b = theirLines.join('\n').match(WORD_TOKEN) || [];
+  const n = a.length;
+  const m = b.length;
+  if (!n || !m || n * m > WORD_DIFF_MAX) return null;
+  const width = m + 1;
+  const lcs = new Uint32Array((n + 1) * width);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i * width + j] = a[i] === b[j] ? lcs[(i + 1) * width + j + 1] + 1 : Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1]);
+    }
+  }
+  const changedA = new Array(n).fill(true);
+  const changedB = new Array(m).fill(true);
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (a[i] === b[j]) {
+      changedA[i++] = false;
+      changedB[j++] = false;
+    } else if (lcs[(i + 1) * width + j] >= lcs[i * width + j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  const words = (tokens) => tokens.filter((t) => !isSpaceToken(t)).length;
+  const common = a.filter((t, i) => !isSpaceToken(t) && !changedA[i]).length;
+  if (common / Math.min(words(a), words(b)) < WORD_DIFF_SIMILAR) return null;
+  return { mine: wordLines(a, changedA), theirs: wordLines(b, changedB) };
+}
+
+// 토막을 줄별로 나누고, 같은 표시가 이어지면 하나로 붙인다. 띄어쓰기는 앞뒤가 모두 달라진 낱말일 때만 함께 칠한다
+function wordLines(tokens, changed) {
+  const lines = [[]];
+  tokens.forEach((token, i) => {
+    if (token === '\n') {
+      lines.push([]);
+      return;
+    }
+    let mark = changed[i];
+    if (isSpaceToken(token)) mark = Boolean(changed[i - 1] && changed[i + 1] && tokens[i - 1] !== '\n' && tokens[i + 1] !== '\n');
+    const line = lines.at(-1);
+    const last = line.at(-1);
+    if (last && last.changed === mark) last.text += token;
+    else line.push({ text: token, changed: mark });
+  });
+  return lines;
+}
+
+export function createConflictView({ parts, theirsLabel, onDone = () => {}, onCancel = () => {} }) {
+  const uid = ++conflictCount;
+  const conflicts = parts.map((part, index) => (part.kind === 'conflict' ? index : -1)).filter((index) => index >= 0);
+  const picks = {}; // 조각 번호 → 'mine' | 'theirs' | 'both'
+  const marked = parts.some((part) => part.marks?.some(Boolean));
+
+  const el = document.createElement('section');
+  el.className = 'memo-conflict';
+  el.setAttribute('aria-labelledby', `memo-conflict-title-${uid}`);
+  el.innerHTML = `
+    <h4 class="memo-conflict-title" id="memo-conflict-title-${uid}" tabindex="-1">다른 곳에서 고친 부분과 겹쳐요</h4>
+    <p class="memo-conflict-desc">겹친 곳마다 남길 글을 고르세요. 다 고르면 편집기에 넣고, 다듬은 뒤 다시 저장해요.</p>
+    <p class="memo-conflict-legend" hidden><span class="memo-conflict-legend-mark is-theirs"></span>다른 곳에서 고쳐 저절로 들어간 줄 <span class="memo-conflict-legend-mark is-mine"></span>이 기기에서 고친 줄</p>
+    <div class="memo-conflict-bulk" hidden>
+      <span class="memo-conflict-bulk-label">남은 겹친 곳 한꺼번에</span>
+      <button type="button" class="memo-conflict-action" data-bulk="mine" aria-label="남은 겹친 곳을 모두 현재(이 기기에서 쓴 글)로 수락">현재 수락</button>
+      <button type="button" class="memo-conflict-action is-theirs" data-bulk="theirs" aria-label="남은 겹친 곳을 모두 수신(다른 곳의 글)으로 수락">수신 수락</button>
+    </div>
+    <div class="memo-conflict-file" role="group" aria-label="메모 전체"></div>
+    <div class="memo-conflict-foot">
+      <span class="memo-conflict-left" aria-live="polite"></span>
+      <div class="memo-conflict-buttons">
+        <button type="button" class="btn btn-sm" data-action="conflict-cancel">취소</button>
+        <button type="button" class="btn btn-sm btn-primary" data-action="conflict-done" disabled>편집기에 넣기</button>
+      </div>
+    </div>`;
+  const file = el.querySelector('.memo-conflict-file');
+  const left = el.querySelector('.memo-conflict-left');
+  const done = el.querySelector('[data-action="conflict-done"]');
+  const bulk = el.querySelector('.memo-conflict-bulk');
+  el.querySelector('.memo-conflict-legend').hidden = !marked;
+
+  const make = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  // 한 줄: 줄 번호 칸 + 글 칸. text가 토막 배열이면 달라진 낱말을 칠한다. 빈 줄도 높이를 지키도록 글 칸을 비워 두지 않는다
+  function row(number, text, className = '', origin = '') {
+    const line = make('div', `memo-conflict-line ${className}${origin ? ` is-from-${origin}` : ''}`.trim());
+    if (origin) line.title = LINE_ORIGIN[origin];
+    const cell = make('span', 'memo-conflict-text');
+    if (Array.isArray(text)) {
+      for (const piece of text) cell.append(piece.changed ? make('mark', 'memo-conflict-word', piece.text) : piece.text);
+      if (!text.length) cell.textContent = '​';
+    } else {
+      cell.textContent = text === '' ? '​' : text;
+    }
+    line.append(make('span', 'memo-conflict-num', number === null ? '' : String(number)), cell);
+    return line;
+  }
+
+  // 충돌 표시 줄: 기호만 고정폭으로 쓰고(고정폭 글꼴에는 한글이 없다), 줄 오른쪽에 그 쪽을 남기는 버튼을 둔다
+  const PICKS = {
+    mine: { label: '현재 수락', name: `현재 수락: ${CONFLICT_MINE}을 남겨요` },
+    both: { label: '모두 수락', name: '모두 수락: 두 글을 다 남겨요 (이 기기의 글 다음에 다른 곳의 글)' },
+    theirs: { label: '수신 수락', name: `수신 수락: ${theirsLabel}을 남겨요` },
+  };
+
+  function marker(sign, name, className, index, pick) {
+    const line = make('div', `memo-conflict-line is-marker ${className}`);
+    const cell = make('span', 'memo-conflict-text');
+    const label = make('span', 'memo-conflict-marker-label');
+    label.append(make('span', 'memo-conflict-sign', sign));
+    if (name) label.append(` ${name}`);
+    const button = make('button', 'memo-conflict-action', PICKS[pick].label);
+    button.type = 'button';
+    button.dataset.pick = pick;
+    button.dataset.index = String(index);
+    button.setAttribute('aria-label', PICKS[pick].name);
+    cell.append(label, button);
+    line.append(make('span', 'memo-conflict-num', ''), cell);
+    return line;
+  }
+
+  function resolvedBar(index) {
+    const bar = make('div', 'memo-conflict-resolved');
+    const label = { mine: '현재를 수락했어요', theirs: '수신을 수락했어요', both: '모두 수락했어요' }[picks[index]];
+    const undo = make('button', 'memo-conflict-action', '다시 고르기');
+    undo.type = 'button';
+    undo.dataset.undo = String(index);
+    bar.append(make('span', 'memo-conflict-resolved-label', label), undo);
+    return bar;
+  }
+
+  function render() {
+    const rows = [];
+    let number = 1;
+    parts.forEach((part, index) => {
+      // 바뀌지 않은 줄도 접지 않고 다 보인다 (상자 안에서 넘겨 본다)
+      if (part.kind === 'same') {
+        const marks = part.marks || [];
+        part.lines.forEach((text, i) => rows.push(row(number++, text, '', marks[i])));
+        return;
+      }
+      const chosen = picks[index];
+      const block = make('div', `memo-conflict-block${chosen ? ' is-resolved' : ''}`);
+      if (chosen) {
+        block.append(resolvedBar(index));
+        const lines = chosen === 'mine' ? part.mineLines : chosen === 'theirs' ? part.theirLines : [...part.mineLines, ...part.theirLines];
+        if (!lines.length) block.append(row(null, '이 부분을 지웠어요', 'is-note'));
+        lines.forEach((text) => block.append(row(number++, text, 'is-picked')));
+      } else {
+        // 아직 고르지 않은 곳의 줄 번호는 현재 쪽을 고른 것으로 치고 매긴다 (수신 쪽도 같은 번호에서 시작한다)
+        block.setAttribute('role', 'group');
+        block.setAttribute('aria-label', `겹친 곳 ${conflicts.indexOf(index) + 1}`);
+        const words = diffWords(part.mineLines, part.theirLines);
+        const side = (text, className, pieces) => (text === '' ? ['(빈 줄)', `${className} is-note`] : [pieces || text, className]);
+        const start = number;
+        block.append(marker('<<<<<<<', `현재 · ${CONFLICT_MINE}`, 'is-mine', index, 'mine'));
+        if (!part.mineLines.length) block.append(row(null, '(이 쪽에서 지웠어요)', 'is-mine is-note'));
+        part.mineLines.forEach((text, i) => block.append(row(start + i, ...side(text, 'is-mine', words?.mine[i]))));
+        block.append(marker('=======', '', 'is-split', index, 'both'));
+        if (!part.theirLines.length) block.append(row(null, '(이 쪽에서 지웠어요)', 'is-theirs is-note'));
+        part.theirLines.forEach((text, i) => block.append(row(start + i, ...side(text, 'is-theirs', words?.theirs[i]))));
+        block.append(marker('>>>>>>>', `수신 · ${theirsLabel}`, 'is-theirs', index, 'theirs'));
+        number += part.mineLines.length;
+      }
+      rows.push(block);
+    });
+    // 다시 그려도 상자에서 보던 자리를 지킨다
+    const scrollTop = file.scrollTop;
+    file.replaceChildren(...rows);
+    file.scrollTop = scrollTop;
+    const remaining = conflicts.filter((index) => !picks[index]).length;
+    left.textContent = remaining ? `겹친 곳 ${conflicts.length}곳 중 ${remaining}곳이 남았어요` : '다 골랐어요';
+    bulk.hidden = conflicts.length < 2 || remaining < 2;
+    done.disabled = remaining > 0;
+  }
+
+  el.addEventListener('click', (e) => {
+    const all = e.target.closest('[data-bulk]');
+    if (all) {
+      for (const index of conflicts) picks[index] ??= all.dataset.bulk;
+      render();
+      done.focus();
+      return;
+    }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) {
+      picks[Number(pick.dataset.index)] = pick.dataset.pick;
+      render();
+      // 다음에 고를 곳으로 옮긴다 (없으면 편집기에 넣기)
+      (el.querySelector('.memo-conflict-action[data-pick]') || done).focus();
+      return;
+    }
+    const undo = e.target.closest('[data-undo]');
+    if (undo) {
+      delete picks[Number(undo.dataset.undo)];
+      render();
+      el.querySelector(`[data-pick][data-index="${undo.dataset.undo}"]`)?.focus();
+      return;
+    }
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'conflict-cancel') onCancel();
+    // joinParts는 겹친 곳만 센 번호를 넘기므로, 조각 자체로 고른 것을 찾는다
+    else if (action === 'conflict-done' && !done.disabled) onDone(joinParts(parts, (part) => picks[parts.indexOf(part)]));
+  });
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    onCancel();
+  });
+
+  render();
+  return {
+    el,
+    // 붙인 뒤에 부른다: 제목에 초점을 두고, 상자를 첫 겹친 곳이 위에서 두 줄 아래에 오도록 넘긴다
+    focus() {
+      el.querySelector('.memo-conflict-title').focus({ preventScroll: true });
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const first = file.querySelector('.memo-conflict-block');
+      const line = file.querySelector('.memo-conflict-line');
+      if (first && line) file.scrollTop = Math.max(0, first.offsetTop - line.offsetHeight * 2);
     },
   };
 }

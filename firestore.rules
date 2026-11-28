@@ -5,10 +5,13 @@ rules_version = '2';
 //     items: { "fe-1": { level, starred } },
 //     memoRepo: { id, fullName }
 //   }
-//   users/{uid}/memos/{0~3} = { "fe-1": { memo, memoAt } }  (질문 번호 % 4로 묶음을 고른다)
+//   users/{uid}/memos/{0~3} = { "fe-1": { memo, memoAt, memoUncommitted } }  (질문 번호 % 4로 묶음을 고른다)
+//   users/{uid}/drafts/{질문 ID} = { text, at, base }  (메모를 고치는 초안. 질문마다 문서 하나)
 // 메모를 기본 문서에서 떼어 낸 것은 문서 하나의 최대 크기(1 MiB)를 메모가 다 쓰지 않게 하려는 것이다.
+// 초안은 초안 글과 기준 글(base)을 함께 담아 메모보다 크므로, 묶음에 넣지 않고 질문마다 따로 둔다.
 // 개인용 서비스라 소유자 GitHub 계정만 읽고 쓸 수 있다. 다른 계정은 로그인해도 거부되어 무료 한도를 쓸 수 없다.
-// 본인 문서만 읽고 쓸 수 있고, 삭제는 막는다 (메모를 지울 때는 문서가 아니라 필드를 지운다).
+// 본인 문서만 읽고 쓸 수 있다. 기본 문서와 메모 묶음은 삭제를 막고(메모를 지울 때는 문서가 아니라 필드를 지운다),
+// 초안은 지울 때 문서째 지운다.
 service cloud.firestore {
   match /databases/{database}/documents {
     // 허용할 GitHub 사용자 번호 (https://api.github.com/users/<아이디> 의 id). 175471172 = YeongGyu1110
@@ -37,6 +40,18 @@ service cloud.firestore {
         allow create, update: if isOwner()
           && request.auth.uid == uid
           && shard in ['0', '1', '2', '3'];
+      }
+
+      // 초안: 접속할 때 모두 한 번에 읽는다(getDocs). 글은 메모와 같이 3,000자까지다
+      match /drafts/{id} {
+        allow get, list, delete: if isOwner() && request.auth.uid == uid;
+        allow create, update: if isOwner()
+          && request.auth.uid == uid
+          && id.matches('^(fe|be)-[0-9]+$')
+          && request.resource.data.keys().hasOnly(['text', 'at', 'base'])
+          && request.resource.data.text is string && request.resource.data.text.size() <= 3000
+          && request.resource.data.base is string && request.resource.data.base.size() <= 3000
+          && request.resource.data.at is int;
       }
     }
   }
